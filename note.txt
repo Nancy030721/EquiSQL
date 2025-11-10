@@ -1,0 +1,1 @@
+python main.py test/create-table.sql test/query1.sql test/query2.sql

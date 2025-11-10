@@ -1,0 +1,1 @@
+SELECT name as name FROM Students WHERE name = "abc" and age > 20;
