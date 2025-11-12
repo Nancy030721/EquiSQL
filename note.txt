@@ -4,12 +4,14 @@ plan for Nov 11th
 3.implement inner join (explicit & implicit) (DONE)
 4.support arithematic operations like +, -, * (ODNE)
 
-currently, table aliasing is not allowed, and I'm forcing people to type in 'table.column' rather than 'column' itself.
+plan for Nov 12th
+1.implement other types of JOIN (left, right, full join)
+(see reasoning/sample process in left_join.py)
+
 
 so next steps:
 1.enable table aliasing 
 2.implement select * 
-
 
 
 
@@ -20,3 +22,25 @@ expected: counterexample
 2.
 python main.py test/create-table2.sql test/query3.sql test/query4.sql 
 expected: EQUIVALENT
+3.
+python main.py test/create-table.sql test/join/left_join.sql test/join/full_join.sql
+expected: counterexample
+4.
+python main.py test/create-table.sql test/join/left_join.sql test/join/right_join_flip.sql
+expected: EQUIVALENT
+5.
+python main.py test/create-table.sql test/join/full_join.sql test/join/full_join_flip.sql
+expected: EQUIVALENT
+
+useful links:
+1.
+https://sqlglot.com/sqlglot/expressions.html
+expr in parsed query 
+2.
+https://microsoft.github.io/z3guide/programming/Z3%20Python%20-%20Readonly/Introduction
+Some examples of how to use Z3 in python, and functionalities that are supported
+
+
+
+
+
