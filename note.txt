@@ -1,1 +1,22 @@
+plan for Nov 11th
+1.add real as data type (DONE)
+2.allow more than one table (DONE)
+3.implement inner join (explicit & implicit) (DONE)
+4.support arithematic operations like +, -, * (ODNE)
+
+currently, table aliasing is not allowed, and I'm forcing people to type in 'table.column' rather than 'column' itself.
+
+so next steps:
+1.enable table aliasing 
+2.implement select * 
+
+
+
+
+commands to test:
+1.
 python main.py test/create-table.sql test/query1.sql test/query2.sql
+expected: counterexample
+2.
+python main.py test/create-table2.sql test/query3.sql test/query4.sql 
+expected: EQUIVALENT

@@ -1,1 +1,1 @@
-SELECT name as name FROM Students WHERE name = "abc" and age > 20;
+SELECT name as name FROM Students WHERE Students.name = 'abc' and Students.age > 20;

@@ -14,6 +14,7 @@ def parse_schema(schema_path):
         "INT": "INT", 
         "INTEGER": "INT", 
         "TEXT": "STRING",
+        "REAL": "REAL"
         # "VARCHAR": "STRING" 
     }
     for stmt in lines:

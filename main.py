@@ -59,7 +59,7 @@ def sanity_check(schema, q1_ast, q2_ast):
                 else:
                     columns.append(str(inner_expr))
 
-            else: #something else 
+            else: #something else, like "select *"
                 exit("not supported")
     
         return columns
@@ -128,10 +128,8 @@ def detect_unsupported(ast, idx):
 
     # Outer joins
     for join in ast.find_all(exp.Join):
-        # for now, let's just say join is not allowed
-        unsupported.append("JOIN")
-        # if join.side and join.side.lower() in {"left", "right", "full"}:
-        #     unsupported.append(f"{join.side.upper()} JOIN")
+        if join.side and join.side.lower() in {"left", "right", "full"}:
+            unsupported.append(f"{join.side.upper()} JOIN")
 
     if len(unsupported) > 0: 
         exit(f"query {idx} contains operations that are not supported -- {unsupported}")
@@ -145,9 +143,6 @@ def encode_and_solve(schema, q1_ast, q2_ast):
     # step 1: declare variables for each query 
     vars_q1 = declare_variables(schema, q1_ast, idx="q1")
     vars_q2 = declare_variables(schema, q2_ast, idx="q2")
-    
-    # print("line147, vars_q1 =", vars_q1) # for debug use
-    # print("line148, vars_q2 =", vars_q2) # for debug use
 
     # step 2: enforce that input tuples are the same 
     for table in schema:
@@ -156,9 +151,11 @@ def encode_and_solve(schema, q1_ast, q2_ast):
                 s.add(vars_q1[table][col] == vars_q2[table][col])
   
     # step 3: add simple example constraints 
-    # for now, just translate WHERE clause for comparison operators
-    cond_q1 = encode_where_clause(q1_ast, vars_q1)
-    cond_q2 = encode_where_clause(q2_ast, vars_q2)
+    cond_q1 = encode_query(q1_ast, vars_q1)
+    cond_q2 = encode_query(q2_ast, vars_q2)
+
+    print("encoding for query1:", cond_q1) # for debug use
+    print("encoding for query2:", cond_q2) # for debug use
 
     # step 4: ask -- is it possible that some variable makes q1 XOR q2
     q1_result = Bool("q1_result")
@@ -169,7 +166,6 @@ def encode_and_solve(schema, q1_ast, q2_ast):
   
     print(f"\nresult: {s.check()}")
     if s.check() == sat :
-        # print(s.model())
         print_counterexample(s.model())
     else :
         print("Query 1 and 2 are equivalent")
@@ -191,13 +187,36 @@ def declare_variables(schema, ast, idx):
             var_name = f"{table}_{idx}_{column}"
             if col_type == "INT":
                 variables[table][column] = Int(var_name)
-            else: # col_type = "STRING"
+            elif col_type =="STRING":
                 variables[table][column] = String(var_name)
+            else: #col_type == "REAL"
+                variables[table][column] = Real(var_name)
 
     return variables
 
 
-# Adds constraints for simple WHERE clauses like 'age > 20' or 'id = 3'.
+def encode_query(ast, variables):
+    cond_join = encode_join_clause(ast, variables)
+    cond_where = encode_where_clause(ast, variables)
+    return And(cond_join, cond_where)
+
+# add constraints for inner join like 'FROM T1 JOIN T2 ON T1.id = T2.id'.
+def encode_join_clause(ast, variables):
+    joins = ast.args.get("joins")
+    if not joins or (len(joins) == 1 and (joins[0].args.get("on")) is None):
+        return BoolVal(True)
+
+    expr = joins[0].args.get("on")
+    encoding = encode_condition(expr, variables)
+    i = 1 
+    while(i < len(joins)) :
+        print("line214, i =", i)
+        expr = joins[i].args.get("on")
+        encoding = And(encode_condition(expr, variables), encoding)
+        i += 1
+    return encoding
+
+# add constraints for simple WHERE clauses like 'R.age > 20' or 'T.id = 3'.
 def encode_where_clause(ast, variables):
     where = ast.args.get("where")
     if not where:
@@ -225,28 +244,14 @@ def encode_condition(expr, variables):
             return Or(encode_condition(expr.args["this"], variables),
                    encode_condition(expr.args["expression"], variables))     
     else:
-        print(f"Unsupported WHERE type: {key}")
-        return BoolVal(True)
+        exit(f"Unsupported type: {key}")
 
 
 
 # convert a simple comparison expression to a Z3 constraint
 def encode_comparison(left, right, op, variables):
-    left_name = str(left).split(".")[-1] 
-    right_val = str(right)
-
-    # Try to resolve left operand
-    for table_vars in variables.values():
-        if left_name in table_vars:
-            var = table_vars[left_name]
-            break
-   
-
-    # Try to interpret right operand as int or string
-    try:
-        right_val = int(right_val)
-    except ValueError:
-        right_val = StringVal(right_val.strip("'\""))
+    var = encode_expr(left, variables)
+    right_val = encode_expr(right, variables)
 
     if op == "gt":
         return var > right_val
@@ -260,11 +265,54 @@ def encode_comparison(left, right, op, variables):
         return var == right_val
     else:
         return None
+
+
+def encode_expr(expr, variables):
+    # print("line256, expr=", expr, ", type =", type(expr))
+
+    # literals
+    if isinstance(expr, exp.Literal):
+        if expr.is_int or expr.is_number:
+            return IntVal(int(str(expr)))
+        if expr.is_string:
+            return StringVal(expr.this)
+        # fall back
+        s = str(expr).strip("'\"")
+        return IntVal(int(s)) if s.isdigit() else StringVal(s)
     
+
+    if isinstance(expr, exp.Condition):
+        key = expr.key.lower()
+
+        # handle math ops
+        if key in ["add", "sub", "mul"]:
+            left, right = expr.args["this"], expr.args["expression"]
+            left = encode_expr(left, variables)
+            right = encode_expr(right, variables)
+
+            if key == "add":
+                return left + right
+            elif key == "sub":
+                return left - right
+            elif key == "mul":
+                return left * right
+            else:
+                raise ValueError(f"Unsupported math operation {key}")
+   
+    if isinstance(expr, exp.Column):
+        table = str(expr.table)
+        column = str(expr.this)
+        if table in variables.keys(): 
+            if column in variables[table]:
+                return variables[table][column]
+        exit(f"attribute not found: {expr}")
+    
+    exit(f"encode_expr: could not resolve {expr}")
+
+
 
 # print an input tuple and the different behaviors q1 and q2 have on it
 def print_counterexample(model): 
-    # print(m)
     q1_result = model.evaluate(Bool("q1_result"), model_completion=True)
     q2_result = model.evaluate(Bool("q2_result"), model_completion=True)
 
@@ -299,7 +347,7 @@ def print_counterexample(model):
         print("  -> Query 2 returns the tuple while Query 1 does not.")
     else:
         print("  -> No difference in outputs (Whoops???).")
-
+    
 
 def exit(err_message):
     print(err_message)
