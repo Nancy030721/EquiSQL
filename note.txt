@@ -6,8 +6,8 @@ plan for Nov 11th
 
 plan for Nov 12th
 1.implement other types of JOIN (left, right, full join)
-(see reasoning/sample process in left_join.py)
-
+(see reasoning/sample process in left_join.ipynb)
+(There's still a problem in either left or right outer join, will fix later)
 
 so next steps:
 1.enable table aliasing 
@@ -23,13 +23,16 @@ expected: counterexample
 python main.py test/create-table2.sql test/query3.sql test/query4.sql 
 expected: EQUIVALENT
 3.
-python main.py test/create-table.sql test/join/left_join.sql test/join/full_join.sql
-expected: counterexample
-4.
-python main.py test/create-table.sql test/join/left_join.sql test/join/right_join_flip.sql
+python main.py test/create-table.sql test/join/inner_join.sql test/join/inner_join2.sql
 expected: EQUIVALENT
-5.
-python main.py test/create-table.sql test/join/full_join.sql test/join/full_join_flip.sql
+4.
+python main.py test/create-table.sql test/join/left_join.sql test/join/left_join2.sql
+expected: counterexample
+5. (BUG HERE)
+python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql
+expected: EQUIVALENT -- actual: counterexample
+6.
+python main.py test/create-table.sql test/join/full_join.sql test/join/full_join2.sql
 expected: EQUIVALENT
 
 useful links:

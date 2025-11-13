@@ -1,4 +1,4 @@
 SELECT Students.name
 FROM Students
-LEFT OUTER JOIN Takes ON Students.id = Takes.sid 
-WHERE Takes.GPA >= 3.0
+LEFT JOIN Takes ON Students.id = Takes.sid 
+WHERE Students.id >= 3
