@@ -7,6 +7,7 @@ EquiSQL is a lightweight SQL query equivalence checker that uses SMT solving to 
 - Supports simple conjunction, disconjuction, and arithematic logic
 - Supports simple arithematic operations such as add, minus, and multiplication
 - Support explicit and implicit INNER JOIN
+- Support table aliasing
 - Translates queries into logical constraints for Z3
 - Reports counterexamples when queries differ
 
@@ -16,8 +17,6 @@ python main.py test/create-table.sql test/query1.sql test/query2.sql
 
 
 ## What we will explore next
-- Handle table aliases in SQL statements
-- Implement the logic for `SELECT *`.
 - Add support for other join types (e.g. `LEFT OUTER`, `RIGHT OUTER`, `FULL JOIN`)  
 - Integrate additional SMT solvers such as CVC5
 

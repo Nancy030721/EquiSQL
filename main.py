@@ -90,6 +90,8 @@ def sanity_check(schema, q1_ast, q2_ast):
                     columns.append(str(inner_expr))
                 
             elif (expr.key== "star") : 
+                # more complex than this, 
+                # e.g. select * from students; VS select stduents.id, students.name, students.age from students;
                 break;      
                    
             else: # something else

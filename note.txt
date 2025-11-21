@@ -11,13 +11,13 @@ plan for Nov 12th
 
 plan for Nov 21th 
 1.enable table aliasing (DONE)
-2.fix bug in Joins 
-3.finish the couple of todos in main.py
+2.implement select * (Part of it)? Check main.py line93 & 109 for two examples 
+3.fix bug in Joins 
+4.finish the couple of todos in main.py
 
-so next steps:
-1.implement select * 
-
-
+next steps:
+1.more test cases/explore some benchmarks
+2.explore other SMT solvers like CVC5
 
 commands to test:
 1.
