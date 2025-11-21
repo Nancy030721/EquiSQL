@@ -4,7 +4,6 @@ from parser import parse_schema, parse_query
 from z3 import *
 
 
-# 
 def main():
     if len(sys.argv) != 4:
         exit("Usage: python main.py create-table.sql query1.sql query2.sql")
@@ -56,8 +55,8 @@ def print_ast(schema, q1_ast, q2_ast) :
         print(f"{table}: {cols}")
     print("----- End of Schema -----")
 
-    print("\n----- Query 1 AST -----") 
-    print(repr(q1_ast))
+    # print("\n----- Query 1 AST -----") 
+    # print(repr(q1_ast))
     # # print(q1_ast.sql(pretty=True))
     # # print(q1_ast.dump())
     
@@ -72,8 +71,13 @@ def print_ast(schema, q1_ast, q2_ast) :
 # 2.they reference existing tables/columns
 # 3.they reference the same set of tables
 def sanity_check(schema, q1_ast, q2_ast):
+    global q1_alias_map, q2_alias_map
 
-    def extract_select_cols(ast):
+    def extract_select_cols(ast, idx):
+        if (idx == 1):
+            alias_map = q1_alias_map
+        else :
+            alias_map = q2_alias_map
         columns = []
         for expr in ast.expressions: 
             if expr.key == "column": 
@@ -89,33 +93,26 @@ def sanity_check(schema, q1_ast, q2_ast):
                 else:
                     columns.append(str(inner_expr))
                 
-            elif (expr.key== "star") : 
-                # more complex than this, 
-                # e.g. select * from students; VS select stduents.id, students.name, students.age from students;
-                break;      
-                   
+            elif (expr.key== "star") :
+                for table in alias_map.values() :
+                    for col in schema[table]:
+                        columns.append(col)
+                
             else: # something else
                 exit("not supported")
     
         return columns
 
-    global q1_alias_map, q2_alias_map
-    q1_cols = extract_select_cols(q1_ast)
-    q2_cols = extract_select_cols(q2_ast)
-
+    q1_cols = extract_select_cols(q1_ast, 1)
+    q2_cols = extract_select_cols(q2_ast, 1)
+    
     if len(q1_cols) != len(q2_cols): # same column number
         exit("Queries project different numbers of columns:", len(q1_cols), "vs", len(q2_cols))
 
-    # todo: need to refine this a bit, because of table aliasing
-    # e.g. when we have 
-    # qeury1: select * from Students, Takes where Students.id = Takes.sid
-    # query2: select * from Students S, Takes T where S.id = T.sid
-    # the current implementation say that is fine but they actually have different schema 
     if set(q1_cols) != set(q2_cols): # same column names
-        err_message = "Queries project different column names:" , q1_cols, "vs", q2_cols
+        err_message = "Queries project different column names: Query1:" , q1_cols, "vs Query 2:", q2_cols
         exit(err_message)
 
-    
     # check column exist in schema
     i = 1
 
@@ -180,8 +177,6 @@ def detect_unsupported(ast, idx):
 
     if len(unsupported) > 0: 
         exit(f"query {idx} contains operations that are not supported -- {unsupported}")
-
-
 
 
 def encode_and_solve(schema, q1_ast, q2_ast):

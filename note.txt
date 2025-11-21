@@ -11,7 +11,7 @@ plan for Nov 12th
 
 plan for Nov 21th 
 1.enable table aliasing (DONE)
-2.implement select * (Part of it)? Check main.py line93 & 109 for two examples 
+2.implement select * (DONE)
 3.fix bug in Joins 
 4.finish the couple of todos in main.py
 
