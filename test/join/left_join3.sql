@@ -1,3 +1,3 @@
-SELECT Students.name
-FROM Students
-LEFT JOIN Takes ON Students.id = Takes.sid
+SELECT S.name
+FROM Students as S
+LEFT JOIN Takes ON S.id = Takes.sid

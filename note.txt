@@ -9,9 +9,13 @@ plan for Nov 12th
 (see reasoning/sample process in left_join.ipynb)
 (There's still a problem in either left or right outer join, will fix later)
 
+plan for Nov 21th 
+1.enable table aliasing (DONE)
+2.fix bug in Joins 
+3.finish the couple of todos in main.py
+
 so next steps:
-1.enable table aliasing 
-2.implement select * 
+1.implement select * 
 
 
 
@@ -42,8 +46,4 @@ expr in parsed query
 2.
 https://microsoft.github.io/z3guide/programming/Z3%20Python%20-%20Readonly/Introduction
 Some examples of how to use Z3 in python, and functionalities that are supported
-
-
-
-
 
