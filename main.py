@@ -69,44 +69,6 @@ def print_ast(schema, q1_ast, q2_ast) :
     # print(repr(q2_ast))
 
 
-def encode_and_solve(schema, q1_ast, q2_ast):
-    global s, q1_alias_map, q2_alias_map
-    s = Solver()
-
-    # step 1: declare variables for each query
-    vars_q1 = declare_variables(schema, idx=1)
-    vars_q2 = declare_variables(schema, idx=2)
-
-
-    # step 2: enforce that input tuples are the same
-    for table in schema:
-        if table in q1_alias_map.values() and table in q2_alias_map.values():
-            for col in schema[table]:
-                s.add(vars_q1[table][col] == vars_q2[table][col])
-
-    # step 3: add simple example constraints
-    cond_q1 = encode_query(q1_ast, 1, vars_q1)
-    cond_q2 = encode_query(q2_ast, 2, vars_q2)
-
-    # print("encoding for query1:", cond_q1) # for debug use
-    # print("encoding for query2:", cond_q2) # for debug use
-
-    # step 4: ask -- is it possible that some variable makes q1 XOR q2
-    q1_result = Bool("q1_result")
-    q2_result = Bool("q2_result")
-    s.add(q1_result == cond_q1)
-    s.add(q2_result == cond_q2)
-    s.add(q1_result != q2_result)
-
-    print(f"assertions: \n{s.assertions()}") # for debug use
-    print(f"\nresult: {s.check()}")
-    if s.check() == sat :
-        # print(s.model())
-        print_counterexample(s.model())
-    else :
-        print("Query 1 and 2 are equivalent")
-
-
 # print an input tuple and the different behaviors q1 and q2 have on it
 def print_counterexample(schema, model): 
     q1_result = model.evaluate(Bool("q1_result"), model_completion=True)
