@@ -9,10 +9,10 @@ plan for Nov 12th
 (see reasoning/sample process in left_join.ipynb)
 (There's still a problem in either left or right outer join, will fix later)
 
-plan for Nov 21th 
+plan for Nov 21th
 1.enable table aliasing (DONE)
 2.implement select * (DONE)
-3.fix bug in Joins 
+3.fix bug in Joins (DONE)
 4.finish the couple of todos in main.py
 
 next steps:
@@ -24,7 +24,7 @@ commands to test:
 python main.py test/create-table.sql test/query1.sql test/query2.sql
 expected: counterexample
 2.
-python main.py test/create-table2.sql test/query3.sql test/query4.sql 
+python main.py test/create-table2.sql test/query3.sql test/query4.sql
 expected: EQUIVALENT
 3.
 python main.py test/create-table.sql test/join/inner_join.sql test/join/inner_join2.sql
@@ -32,9 +32,9 @@ expected: EQUIVALENT
 4.
 python main.py test/create-table.sql test/join/left_join.sql test/join/left_join2.sql
 expected: counterexample
-5. (BUG HERE)
+5.
 python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql
-expected: EQUIVALENT -- actual: counterexample
+expected: counterexample
 6.
 python main.py test/create-table.sql test/join/full_join.sql test/join/full_join2.sql
 expected: EQUIVALENT
@@ -42,7 +42,7 @@ expected: EQUIVALENT
 useful links:
 1.
 https://sqlglot.com/sqlglot/expressions.html
-expr in parsed query 
+expr in parsed query
 2.
 https://microsoft.github.io/z3guide/programming/Z3%20Python%20-%20Readonly/Introduction
 Some examples of how to use Z3 in python, and functionalities that are supported
