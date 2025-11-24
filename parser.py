@@ -10,12 +10,11 @@ def parse_schema(schema_path):
     schema = {}
     lines = schema_sql.split(";")
    
-    sql_data_types = {   # todo: update this dict 
+    sql_data_types = { 
         "INT": "INT", 
         "INTEGER": "INT", 
         "TEXT": "STRING",
         "REAL": "REAL"
-        # "VARCHAR": "STRING" 
     }
     for stmt in lines:
         stmt = stmt.strip()

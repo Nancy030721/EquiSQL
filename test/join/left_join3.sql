@@ -1,3 +1,3 @@
-SELECT S.name
-FROM Students as S
-LEFT JOIN Takes ON S.id = Takes.sid
+SELECT S.id, S.name, S.age, T.sid, T.cid, T.GPA
+FROM Takes as T
+LEFT JOIN Students S ON S.id = T.sid LIMIT 1;

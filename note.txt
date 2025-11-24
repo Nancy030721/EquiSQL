@@ -1,20 +1,3 @@
-plan for Nov 11th
-1.add real as data type (DONE)
-2.allow more than one table (DONE)
-3.implement inner join (explicit & implicit) (DONE)
-4.support arithematic operations like +, -, * (ODNE)
-
-plan for Nov 12th
-1.implement other types of JOIN (left, right, full join)
-(see reasoning/sample process in left_join.ipynb)
-(There's still a problem in either left or right outer join, will fix later)
-
-plan for Nov 21th
-1.enable table aliasing (DONE)
-2.implement select * (DONE)
-3.fix bug in Joins (DONE)
-4.finish the couple of todos in main.py
-
 next steps:
 1.more test cases/explore some benchmarks
 2.explore other SMT solvers like CVC5
@@ -34,9 +17,12 @@ python main.py test/create-table.sql test/join/left_join.sql test/join/left_join
 expected: counterexample
 5.
 python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql
-expected: counterexample
+expected: EQUIVALENT
 6.
 python main.py test/create-table.sql test/join/full_join.sql test/join/full_join2.sql
+expected: EQUIVALENT
+7. NEW ADDED --
+python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_join3.sql
 expected: EQUIVALENT
 
 useful links:
