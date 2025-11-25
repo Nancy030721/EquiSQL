@@ -33,7 +33,10 @@ expected: EQUIVALENT
 python main.py test/create-table.sql test/null/null3.sql test/null/null4.sql
 expected: EQUIVALENT
 
-python main.py test/create-table.sql test/null/null4.sql test/null/null5.sql
+python main.py test/create-table.sql test/null/null5.sql test/null/null6.sql
+expected: EQUIVALENT
+
+python main.py test/null/create-table3.sql test/null/null7.sql test/null/null8.sql
 expected: EQUIVALENT
 
 

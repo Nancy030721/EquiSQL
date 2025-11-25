@@ -12,18 +12,20 @@ def main():
     schema_file, q1_file, q2_file = sys.argv[1], sys.argv[2], sys.argv[3]
 
     # parse the create table queries to get schema 
-    global schema
-    schema = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
+    global schema, not_null, null_funcs
+    schema, not_null = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
+
+    print(f"schema: {schema}") # for debug use 
+    print(f"not null attributes: {not_null}") # for debug use 
 
     # new added
-    global null_funcs
     null_funcs = [Function("NullInt", IntSort(), BoolSort()), Function("NullString", StringSort(), BoolSort()),
                    Function("NullReal", RealSort(), BoolSort())]
 
     # parse each query
     q1_ast = parse_query(q1_file)
     q2_ast = parse_query(q2_file)
-    print_ast(schema, q1_ast, q2_ast) # for debug use
+    # print_ast(schema, q1_ast, q2_ast) # for debug use
 
     q1_alias_map = build_alias_map(q1_ast)
     q2_alias_map = build_alias_map(q2_ast)
@@ -33,7 +35,7 @@ def main():
     # perform some cheap checks over the queries 
     sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
-    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, null_funcs)
+    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, null_funcs, not_null)
     print(f"assertions: \n{s.assertions()}") # for debug use
     print(f"\nresult: {s.check()}")
     if s.check() == sat :

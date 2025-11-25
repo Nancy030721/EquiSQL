@@ -1,0 +1,3 @@
+SELECT *
+FROM Students S
+WHERE S.name IS NOT NULL AND S.id IS NOT NULL
