@@ -1,3 +1,6 @@
+Nov 25th:
+Implemented NULL constraint using Z3 function, now it works fine with joins and non-nullable attributes 
+
 next steps:
 1.more test cases/explore some benchmarks
 2.explore other SMT solvers like CVC5
@@ -26,7 +29,7 @@ python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_jo
 expected: EQUIVALENT
 
 
-
+New test cases for (IS NULL / IS NOT NULL):
 python main.py test/create-table.sql test/null/null1.sql test/null/null2.sql
 expected: EQUIVALENT
 
@@ -48,4 +51,3 @@ expr in parsed query
 2.
 https://microsoft.github.io/z3guide/programming/Z3%20Python%20-%20Readonly/Introduction
 Some examples of how to use Z3 in python, and functionalities that are supported
-
