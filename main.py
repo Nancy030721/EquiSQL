@@ -15,6 +15,11 @@ def main():
     global schema
     schema = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
 
+    # new added
+    global null_funcs
+    null_funcs = [Function("NullInt", IntSort(), BoolSort()), Function("NullString", StringSort(), BoolSort()),
+                   Function("NullReal", RealSort(), BoolSort())]
+
     # parse each query
     q1_ast = parse_query(q1_file)
     q2_ast = parse_query(q2_file)
@@ -28,7 +33,7 @@ def main():
     # perform some cheap checks over the queries 
     sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
-    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
+    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, null_funcs)
     print(f"assertions: \n{s.assertions()}") # for debug use
     print(f"\nresult: {s.check()}")
     if s.check() == sat :

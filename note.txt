@@ -25,6 +25,19 @@ expected: EQUIVALENT
 python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_join3.sql
 expected: EQUIVALENT
 
+
+
+python main.py test/create-table.sql test/null/null1.sql test/null/null2.sql
+expected: EQUIVALENT
+
+python main.py test/create-table.sql test/null/null3.sql test/null/null4.sql
+expected: EQUIVALENT
+
+python main.py test/create-table.sql test/null/null4.sql test/null/null5.sql
+expected: EQUIVALENT
+
+
+
 useful links:
 1.
 https://sqlglot.com/sqlglot/expressions.html
