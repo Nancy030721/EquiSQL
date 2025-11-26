@@ -1,0 +1,5 @@
+SELECT *
+FROM Students S
+FULL JOIN Takes T 
+ON S.id = T.sid
+WHERE S.id IS NOT NULL AND T.sid IS NULL

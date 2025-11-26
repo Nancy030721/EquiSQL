@@ -8,14 +8,14 @@ def parse_schema(schema_path):
     with open(schema_path) as f:
         schema_sql = f.read()
     schema = {}
+    not_null = {}
     lines = schema_sql.split(";")
    
-    sql_data_types = {   # todo: update this dict 
+    sql_data_types = { 
         "INT": "INT", 
         "INTEGER": "INT", 
         "TEXT": "STRING",
         "REAL": "REAL"
-        # "VARCHAR": "STRING" 
     }
     for stmt in lines:
         stmt = stmt.strip()
@@ -23,14 +23,22 @@ def parse_schema(schema_path):
             name = stmt.split()[2]
             cols = stmt[stmt.find("(")+1 : stmt.find(")")].split(",")
             schema[name] = {}
+            not_null[name] = []
             for c in cols:
-                cname, ctype = c.strip().split()
+                ls = c.strip().split()
+                cname, ctype = ls[0:2]
                 ctype = ctype.upper()
+
+                if (len(ls) == 4):
+                    if ((ls[2].upper() == "NOT" and ls[3].upper() == "NULL") or 
+                        (ls[2].upper() == "PRIMARY" and ls[3].upper() == "KEY")) :
+                        not_null[name].append(cname)
+                
                 if (ctype not in sql_data_types): 
                     print("Type", ctype, "is not supported")
                     sys.exit(1)
                 schema[name][cname] = sql_data_types[ctype]
-    return schema
+    return schema, not_null
 
 
 # use sqlglot to parse queries
