@@ -1,0 +1,53 @@
+files to edit: 
+1.main.py -- done 
+2.parser.py -- done 
+3.encoder.py 
+
+
+Tests without join:
+1.apply distinct on primary key -- no difference 
+python main.py test/distinct/create-table.sql test/distinct/simple/distinct1.sql test/distinct/simple/distinct2.sql 
+expected: EQUIVALENT
+
+2.apply distinct on some non-unique attribute(s) 
+python main.py test/distinct/create-table.sql test/distinct/simple/distinct3.sql test/distinct/simple/distinct4.sql 
+expected: counterexample
+
+3.apply distinct on a combo of primary key and other attribute 
+python main.py test/distinct/create-table.sql test/distinct/simple/distinct5.sql test/distinct/simple/distinct6.sql 
+expected: EQUIVALENT
+
+
+Tests with join:
+1.Distinct on left table's primary key after inner join -- some key value can only be found in left but not right 
+python main.py test/distinct/create-table.sql test/distinct/plus_join/distinct_join1.sql test/distinct/simpel/distinct2.sql 
+expected: counterexample
+ 
+2.Distinct on left table's primary key after left join / full join 
+python main.py test/distinct/create-table.sql test/distinct/plus_join/distinct_join2.sql test/distinct/simpel/distinct2.sql 
+expected: EQUIVALENT
+
+3.Distinct on right table's primary key after left join 
+python main.py test/distinct/create-table.sql test/distinct/plus_join/distinct_join3.sql test/distinct/simpel/distinct2.sql 
+expected: counterexample
+
+4.Distinct on (left.key, right.key) after full join
+python main.py test/distinct/create-table.sql test/distinct/plus_join/distinct_join4.sql test/distinct/plus_join/distinct_join5.sql
+expected: counterexample
+
+
+the key insight is that we need to check:
+
+1.If there is join?
+Yes --> 2.Will that affect the UNIQUENESS of key?
+        No --> add constraint  
+               (if T is on 
+                    1) either side of inner join, or
+                    2) left side of left join 
+                    3) right side of right join)
+        Yes --> don't add constraint
+                (anything else )
+No --> add constraint that the primary key is distinct and not null
+
+
+also other things to keep in mind, like how to generate encoding for distinct on more than one attribute 

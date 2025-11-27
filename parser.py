@@ -1,6 +1,6 @@
 import sys
 import sqlglot
-from sqlglot import errors, parse_one
+from sqlglot import parse_one
 
 
 # parse schema manually
@@ -9,6 +9,7 @@ def parse_schema(schema_path):
         schema_sql = f.read()
     schema = {}
     not_null = {}
+    primary_keys = {}
     lines = schema_sql.split(";")
    
     sql_data_types = { 
@@ -33,12 +34,14 @@ def parse_schema(schema_path):
                     if ((ls[2].upper() == "NOT" and ls[3].upper() == "NULL") or 
                         (ls[2].upper() == "PRIMARY" and ls[3].upper() == "KEY")) :
                         not_null[name].append(cname)
+                        if (ls[2].upper() == "PRIMARY" and ls[3].upper() == "KEY") :
+                            primary_keys[name] = cname
                 
                 if (ctype not in sql_data_types): 
                     print("Type", ctype, "is not supported")
                     sys.exit(1)
                 schema[name][cname] = sql_data_types[ctype]
-    return schema, not_null
+    return schema, not_null, primary_keys
 
 
 # use sqlglot to parse queries

@@ -1,6 +1,10 @@
 Nov 25th:
 Implemented NULL constraint using Z3 function, now it works fine with joins and non-nullable attributes 
 
+Nov 26th:
+Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt
+
+
 next steps:
 1.more test cases/explore some benchmarks
 2.explore other SMT solvers like CVC5

@@ -3,16 +3,20 @@ from sqlglot import expressions as exp
 from z3 import *
 
 
-def encode(schema, q1_ast, q2_ast, alias_map_1, alias_map_2, nf, nn):
-    # define and initialize global variables
-    global s, NULL, q1_alias_map, q2_alias_map, null_funcs, not_null, vars
+def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
+    # step 0: read inputs, define and initialize global variables
+    global s, NULL, q1_alias_map, q2_alias_map, has_joins, q2_has_join, not_null, primary_keys, vars, null_funcs, distinct_funcs
+    
     s = Solver()
     NULL = IntVal(-1)
-    q1_alias_map = alias_map_1
-    q2_alias_map = alias_map_2
-    null_funcs = nf
-    not_null = nn
-    
+    q1_alias_map, q2_alias_map, not_null, primary_keys = map1, map2, nn, pk
+    null_funcs = [Function("NullInt", IntSort(), BoolSort()), 
+                  Function("NullString", StringSort(), BoolSort()),
+                   Function("NullReal", RealSort(), BoolSort())]
+    distinct_funcs = [Function("DistinctInt", IntSort(), BoolSort()), 
+                  Function("DistinctString", StringSort(), BoolSort()),
+                   Function("DistinctReal", RealSort(), BoolSort())]
+    has_joins = [False, False]
     
     # step 1: declare variables for each query 
     vars_q1 = declare_variables(schema, idx="q1")
@@ -92,10 +96,12 @@ def encode_query(schema, ast, idx, variables):
         where_tables = extract_tables_from_condition(where.this, idx)
         # Modify join encoding if WHERE filters on other side
         cond_join = encode_join(schema, ast, idx, variables, where_tables)
-        # cond_join = encode_join(schema, ast, idx, variables, None)
     else:
         cond_join = encode_join(schema, ast, idx, variables, set())
     cond_where = encode_where(schema, ast, idx, variables)
+    
+    
+
     return And(cond_join, cond_where)
 
 # Extract tables referenced in a condition expression
@@ -137,9 +143,14 @@ def extract_tables_from_condition(expr, idx):
 
     return tables
 
+# return true if explicit join(s) is found in ast, false otherwise 
+def explicit_join_found(ast):
+    joins = ast.args.get("joins")
+    return not (not joins or (len(joins) == 1 and (joins[0].args.get("on")) is None))
+    
 
 def encode_join(schema, ast, idx, variables, where_tables=None):
-    global q1_alias_map, q2_alias_map
+    global q1_alias_map, q2_alias_map, has_joins
     if (idx == 1):
         alias_map = q1_alias_map
     else:
@@ -149,10 +160,9 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
         where_tables = set()
     
     encoding = BoolVal(True) 
-    joins = ast.args.get("joins")
-    # no (explicit) joins
-    if not joins or (len(joins) == 1 and (joins[0].args.get("on")) is None):
+    if not explicit_join_found(ast):
         return encoding
+    has_joins[idx-1] = True
 
     # Extract left table from FROM clause - handle different AST structures
     from_clause = ast.args.get("from")
@@ -182,7 +192,7 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
     # left_table_name is the alias/table name as it appears in the query
     # variables["row_identity"] is keyed by alias_map.keys() which are aliases/table names
 
-
+    joins = ast.args.get("joins")
     for i in range(len(joins)) :
         join = joins[i]
         cond = join.args.get("on")
@@ -249,6 +259,7 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
 
 def encode_left_join(on_pred, left_row, right_row, LeftJoin, schema):
     global NULL
+    print(f"line254, left join, left_row = {left_row}, right_row = {right_row}")
     return And(
         (Not (encode_is_null(left_row, "INT"))), #left key is not null
         Implies(on_pred, LeftJoin(left_row, right_row)),
@@ -329,10 +340,8 @@ def encode_comparison(schema, idx, left, right, op, variables):
         return None
 
 # encode IS NULL conditions
-# tidi
 def encode_is_null(col_name, col_type="INT"):
     # print(f"line330, col_name is {col_name}")
-    # col_name = str(col_name)
     global null_funcs, vars
     if col_type == "INT":
         return null_funcs[0](col_name)
@@ -340,7 +349,19 @@ def encode_is_null(col_name, col_type="INT"):
         return null_funcs[1](col_name)
     else: #col_type == "REAL"
         return null_funcs[2](col_name)
-        
+
+# todo
+# encode DISTINCT for primary key and that in select clause
+def encode_is_distinct(col_name, col_type="INT"):
+    # print(f"line330, col_name is {col_name}")
+    global distinct_funcs, vars
+    if col_type == "INT":
+        return distinct_funcs[0](col_name)
+    elif col_type =="STRING":
+        return distinct_funcs[1](col_name)
+    else: #col_type == "REAL"
+        return distinct_funcs[2](col_name)
+       
 
 def encode_expr(schema, idx, expr, variables):
     global q1_alias_map, q2_alias_map

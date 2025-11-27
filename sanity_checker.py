@@ -121,9 +121,9 @@ def detect_unsupported(ast, idx):
         if (f.key.lower() not in ["and", "or"]) :
             unsupported.append("Aggregation functions")
 
-    # DISTINCT
-    if ast.args.get("distinct"):
-        unsupported.append("DISTINCT")
+    # # DISTINCT
+    # if ast.args.get("distinct"):
+    #     unsupported.append("DISTINCT")
 
     # UNION / INTERSECT / EXCEPT
     if list(ast.find_all(exp.Union)):

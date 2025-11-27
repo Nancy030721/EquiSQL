@@ -12,15 +12,12 @@ def main():
     schema_file, q1_file, q2_file = sys.argv[1], sys.argv[2], sys.argv[3]
 
     # parse the create table queries to get schema 
-    global schema, not_null, null_funcs
-    schema, not_null = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
+    global schema, null_funcs
+    schema, not_null, primary_keys = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
 
-    print(f"schema: {schema}") # for debug use 
+    print(f"schema: {schema}") # for debug use
+    print(f"primary keys: {primary_keys}") # for debug use 
     print(f"not null attributes: {not_null}") # for debug use 
-
-    # new added
-    null_funcs = [Function("NullInt", IntSort(), BoolSort()), Function("NullString", StringSort(), BoolSort()),
-                   Function("NullReal", RealSort(), BoolSort())]
 
     # parse each query
     q1_ast = parse_query(q1_file)
@@ -29,13 +26,13 @@ def main():
 
     q1_alias_map = build_alias_map(q1_ast)
     q2_alias_map = build_alias_map(q2_ast)
-    print("q1_alias_map =", q1_alias_map) # for debug use
-    print("q2_alias_map =", q2_alias_map) # for debug use
+    # print("q1_alias_map =", q1_alias_map) # for debug use
+    # print("q2_alias_map =", q2_alias_map) # for debug use
 
     # perform some cheap checks over the queries 
     sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
-    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, null_funcs, not_null)
+    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys)
     print(f"assertions: \n{s.assertions()}") # for debug use
     print(f"\nresult: {s.check()}")
     if s.check() == sat :
