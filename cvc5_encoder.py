@@ -6,7 +6,8 @@ from cvc5 import Kind
 
 def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     # step 0: read inputs, define and initialize global variables
-    global s, NULL, q1_alias_map, q2_alias_map, has_joins, q2_has_join, not_null, primary_keys, vars, null_funcs, distinct_funcs, variables_to_interpret
+    global s, NULL, q1_alias_map, q2_alias_map, has_joins, q2_has_join, not_null, primary_keys, vars, null_funcs, variables_to_interpret
+    # global distinct_funcs
 
     s = cvc5.Solver()
     s.setLogic("ALL") 
@@ -26,10 +27,10 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     null_funcs.append(s.mkConst(s.mkFunctionSort([s.getIntegerSort()], s.getBooleanSort()), "NullInt"))
     null_funcs.append(s.mkConst(s.mkFunctionSort([s.getStringSort()], s.getBooleanSort()), "NullString"))
     null_funcs.append(s.mkConst(s.mkFunctionSort([s.getRealSort()], s.getBooleanSort()), "NullReal"))
-    distinct_funcs = []
-    distinct_funcs.append(s.mkConst(s.mkFunctionSort([s.getIntegerSort()], s.getBooleanSort()), "DistinctInt"))
-    distinct_funcs.append(s.mkConst(s.mkFunctionSort([s.getStringSort()], s.getBooleanSort()), "DistinctString"))
-    distinct_funcs.append(s.mkConst(s.mkFunctionSort([s.getRealSort()], s.getBooleanSort()), "DistinctReal"))
+    # distinct_funcs = []
+    # distinct_funcs.append(s.mkConst(s.mkFunctionSort([s.getIntegerSort()], s.getBooleanSort()), "DistinctInt"))
+    # distinct_funcs.append(s.mkConst(s.mkFunctionSort([s.getStringSort()], s.getBooleanSort()), "DistinctString"))
+    # distinct_funcs.append(s.mkConst(s.mkFunctionSort([s.getRealSort()], s.getBooleanSort()), "DistinctReal"))
 
     has_joins = [False, False]
     
@@ -45,23 +46,18 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
             for col in schema[table]:
                 s.assertFormula(s.mkTerm(Kind.EQUAL, vars_q1[table][col], vars_q2[table][col]))
  
-    # step 3: add constraints that some attributes cannot be null
-    for table_name in not_null:
-        ls = not_null[table_name]
-        for col_name in ls :
-            if table_name in vars:
-                col_name, col_type = vars[table_name][col_name], schema[table_name][col_name]
-                s.assertFormula(s.mkTerm(Kind.NOT, (encode_is_null(col_name, col_type)))) 
-                # need to make the first param has type z3.z3.SeqRef or z3.z3.ArithRef, not String    
+    # new added
+    global q1_used_terms, q2_used_terms   
+    q1_used_terms, q2_used_terms = set(), set()
 
-    # step 4: encode constraints for each query
+    # step 3: encode constraints for each query
     cond_q1 = encode_query(schema, q1_ast, 1, vars_q1)
     cond_q2 = encode_query(schema, q2_ast, 2, vars_q2)
 
     # print("encoding for query1:", cond_q1) # for debug use
     # print("encoding for query2:", cond_q2) # for debug use
 
-    # step 5: ask -- is it possible that some variable makes q1 XOR q2
+    # step 4: ask -- is it possible that some variable makes q1 XOR q2
     q1_result = s.mkConst(s.getBooleanSort(), "q1_result")
     q2_result = s.mkConst(s.getBooleanSort(), "q2_result")
     s.assertFormula(s.mkTerm(Kind.EQUAL, q1_result, cond_q1))
@@ -123,9 +119,12 @@ def encode_query(schema, ast, idx, variables):
         cond_join = encode_join(schema, ast, idx, variables, where_tables)
     else:
         cond_join = encode_join(schema, ast, idx, variables, set())
+
     cond_where = encode_where(schema, ast, idx, variables)
+
+    cond_primary_keys = encode_not_null_for_primary_keys(schema, idx)
     
-    return s.mkTerm(Kind.AND, cond_join, cond_where)
+    return s.mkTerm(Kind.AND, cond_join, cond_where, cond_primary_keys)
 
 # Extract tables referenced in a condition expression
 def extract_tables_from_condition(expr, idx):
@@ -515,11 +514,12 @@ def encode_is_null(col_name, col_type="INT"):
 # returns a tuple (expr, type), where expr is a cvc5.Term
 def encode_expr(schema, idx, expr, variables):
     # print(f"line473, encode_expr({expr}) in query{idx}")
-    global s, q1_alias_map, q2_alias_map
+    global q1_alias_map, q2_alias_map, q1_used_terms, q2_used_terms, vars
     if (idx == 1): 
-        alias_map = q1_alias_map
+        alias_map, used_terms = q1_alias_map, q1_used_terms
     elif (idx == 2):
-        alias_map = q2_alias_map
+        alias_map, used_terms = q2_alias_map, q2_used_terms
+
     # literals
     if isinstance(expr, exp.Literal):
         if expr.is_int:
@@ -560,10 +560,30 @@ def encode_expr(schema, idx, expr, variables):
     if isinstance(expr, exp.Column):
         table = alias_map[str(expr.table)]
         column = str(expr.this)
+        used_terms.add(vars[table][column])
         return variables[table][column], schema[table][column]
     
     raise Exception(f"encode_expr: could not resolve {expr} in query{idx}")
     # exit(f"encode_expr: could not resolve {expr} in query{idx}")
+
+
+def encode_not_null_for_primary_keys(schema, idx):
+    global s, vars, not_null, q1_used_terms, q2_used_terms
+    if idx == 1:
+        used_terms = q1_used_terms
+    else:
+        used_terms = q2_used_terms
+    # print(f"line535, used terms in query{idx} are: {used_terms}")
+
+    temp = s.mkTrue()
+    for table_name in not_null:
+        ls = not_null[table_name]
+        for col_name in ls :
+            if table_name in vars:
+                col_name, col_type = vars[table_name][col_name], schema[table_name][col_name]
+                if col_name not in used_terms:
+                    temp = s.mkTerm(Kind.AND, temp, s.mkTerm(Kind.NOT, encode_is_null(col_name, col_type)))
+    return temp 
 
 
 def exit(err_message):

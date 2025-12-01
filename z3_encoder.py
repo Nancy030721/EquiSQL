@@ -5,7 +5,8 @@ from z3 import *
 
 def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     # step 0: read inputs, define and initialize global variables
-    global s, NULL, q1_alias_map, q2_alias_map, has_joins, q2_has_join, not_null, primary_keys, vars, null_funcs, distinct_funcs
+    global s, NULL, q1_alias_map, q2_alias_map, has_joins, q2_has_join, not_null, primary_keys, vars, null_funcs
+    # global distinct_funcs
     
     s = Solver()
     NULL = IntVal(-1)
@@ -13,14 +14,14 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     null_funcs = [Function("NullInt", IntSort(), BoolSort()), 
                   Function("NullString", StringSort(), BoolSort()),
                    Function("NullReal", RealSort(), BoolSort())]
-    distinct_funcs = [Function("DistinctInt", IntSort(), BoolSort()), 
-                  Function("DistinctString", StringSort(), BoolSort()),
-                   Function("DistinctReal", RealSort(), BoolSort())]
+    # distinct_funcs = [Function("DistinctInt", IntSort(), BoolSort()), 
+    #               Function("DistinctString", StringSort(), BoolSort()),
+    #                Function("DistinctReal", RealSort(), BoolSort())]
     has_joins = [False, False]
     
     # step 1: declare variables for each query 
-    vars_q1 = declare_variables(schema, idx="q1")
-    vars_q2 = declare_variables(schema, idx="q2")
+    q1_vars = declare_variables(schema, idx="q1")
+    q2_vars = declare_variables(schema, idx="q2")
     vars = declare_variables(schema, idx="") # created these for IS (NOT) NULL
 
 
@@ -28,29 +29,24 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     for table in schema:
         if table in q1_alias_map.values() and table in q2_alias_map.values():
             for col in schema[table]:
-                s.add(vars_q1[table][col] == vars_q2[table][col])
+                s.add(q1_vars[table][col] == q2_vars[table][col])
  
-    # step 3: add constraints that some attributes cannot be null
-    for table_name in not_null:
-        ls = not_null[table_name]
-        for col_name in ls :
-            if table_name in vars:
-                col_name, col_type = vars[table_name][col_name], schema[table_name][col_name]
-                s.add(Not(encode_is_null(col_name, col_type))) 
-                # need to make the first param has type z3.z3.SeqRef or z3.z3.ArithRef, not String    
+    # new added
+    global q1_used_terms, q2_used_terms   
+    q1_used_terms, q2_used_terms = set(), set()
+    
+    # step 3: encode constraints for each query
+    q1_cond = encode_query(schema, q1_ast, 1, q1_vars)
+    q2_cond = encode_query(schema, q2_ast, 2, q2_vars)
 
-    # step 4: encode constraints for each query
-    cond_q1 = encode_query(schema, q1_ast, 1, vars_q1)
-    cond_q2 = encode_query(schema, q2_ast, 2, vars_q2)
+    # print("encoding for query1:", q1_cond) # for debug use
+    # print("encoding for query2:", q2_cond) # for debug use
 
-    # print("encoding for query1:", cond_q1) # for debug use
-    # print("encoding for query2:", cond_q2) # for debug use
-
-    # step 5: ask -- is it possible that some variable makes q1 XOR q2
+    # step 4: ask -- is it possible that some variable makes q1 XOR q2
     q1_result = Bool("q1_result")
     q2_result = Bool("q2_result")
-    s.add(q1_result == cond_q1)
-    s.add(q2_result == cond_q2)
+    s.add(q1_result == q1_cond)
+    s.add(q2_result == q2_cond)
     s.add(q1_result != q2_result)
    
     return s
@@ -98,9 +94,13 @@ def encode_query(schema, ast, idx, variables):
         cond_join = encode_join(schema, ast, idx, variables, where_tables)
     else:
         cond_join = encode_join(schema, ast, idx, variables, set())
+
     cond_where = encode_where(schema, ast, idx, variables)
-    
-    return And(cond_join, cond_where)
+
+    # new added: enforce primary keys not null here
+    cond_primary_keys = encode_not_null_for_primary_keys(schema, idx)
+
+    return And(cond_join, And(cond_where, cond_primary_keys))
 
 # Extract tables referenced in a condition expression
 def extract_tables_from_condition(expr, idx):
@@ -451,26 +451,26 @@ def encode_is_null(col_name, col_type="INT"):
     else: #col_type == "REAL"
         return null_funcs[2](col_name)
 
-# todo
-# encode DISTINCT for primary key and that in select clause
-def encode_is_distinct(col_name, col_type="INT"):
-    # print(f"line462, col_name is {col_name}")
-    global distinct_funcs, vars
-    if col_type == "INT":
-        return distinct_funcs[0](col_name)
-    elif col_type =="STRING":
-        return distinct_funcs[1](col_name)
-    else: #col_type == "REAL"
-        return distinct_funcs[2](col_name)
+# # todo
+# # encode DISTINCT for primary key and that in select clause
+# def encode_is_distinct(col_name, col_type="INT"):
+#     # print(f"line462, col_name is {col_name}")
+#     global distinct_funcs, vars
+#     if col_type == "INT":
+#         return distinct_funcs[0](col_name)
+#     elif col_type =="STRING":
+#         return distinct_funcs[1](col_name)
+#     else: #col_type == "REAL"
+#         return distinct_funcs[2](col_name)
        
 
 def encode_expr(schema, idx, expr, variables):
     # print(f"line473, encode_expr({expr}) in query{idx}")
-    global q1_alias_map, q2_alias_map
+    global q1_alias_map, q2_alias_map, q1_used_terms, q2_used_terms, vars
     if (idx == 1): 
-        alias_map = q1_alias_map
+        alias_map, used_terms = q1_alias_map, q1_used_terms
     elif (idx == 2):
-        alias_map = q2_alias_map
+        alias_map, used_terms = q2_alias_map, q2_used_terms
     # literals
     if isinstance(expr, exp.Literal):
         if expr.is_int:
@@ -507,12 +507,33 @@ def encode_expr(schema, idx, expr, variables):
     if isinstance(expr, exp.Column):
         table = alias_map[str(expr.table)]
         column = str(expr.this)
+        used_terms.add(vars[table][column])
         return variables[table][column], schema[table][column]
     
     raise Exception(f"encode_expr: could not resolve {expr} in query{idx}")
     # exit(f"encode_expr: could not resolve {expr} in query{idx}")
 
 
+def encode_not_null_for_primary_keys(schema, idx):
+    global vars, not_null, q1_used_terms, q2_used_terms
+    if idx == 1:
+        used_terms = q1_used_terms
+    else:
+        used_terms = q2_used_terms
+    # print(f"line535, used terms in query{idx} are: {used_terms}")
+
+    temp = BoolVal(True) 
+    for table_name in not_null:
+        ls = not_null[table_name]
+        for col_name in ls :
+            if table_name in vars:
+                col_name, col_type = vars[table_name][col_name], schema[table_name][col_name]
+                if col_name not in used_terms:
+                    temp = And(temp, (Not (encode_is_null(col_name, col_type))))
+
+    return temp 
+    
+    
 def exit(err_message):
     print(err_message)
     sys.exit(1)

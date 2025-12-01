@@ -20,7 +20,7 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/null/null1.sql", "test/null/null2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
-    # (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
+    (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
 ]
 
 
