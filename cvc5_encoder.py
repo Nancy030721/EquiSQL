@@ -67,6 +67,9 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     s.assertFormula(s.mkTerm(Kind.EQUAL, q1_result, cond_q1))
     s.assertFormula(s.mkTerm(Kind.EQUAL, q2_result, cond_q2))
     s.assertFormula(s.mkTerm(Kind.NOT, s.mkTerm(Kind.EQUAL, q1_result, q2_result)))
+    variables_to_interpret.add(q1_result)
+    variables_to_interpret.add(q2_result)
+
     return s, variables_to_interpret 
 
 
@@ -97,7 +100,8 @@ def declare_variables(schema, idx):
             else: #col_type == "REAL"
                 variables[table][column] = s.mkConst(s.getRealSort(), var_name)
     
-    extract_values(variables.values())
+    if (idx != ""):
+        extract_values(variables.values())
     return variables
 
 

@@ -6,12 +6,13 @@ import z3_encoder
 from z3 import *
 import cvc5_encoder
 from cvc5 import *
+import time
 
 
 def main():
     if len(sys.argv) < 4:
         exit("Usage: python main.py create-table.sql query1.sql query2.sql (optional -z3 or -cvc5)")
-    solver_type = "z3"
+    solver_type = "z3" #z3 as default
     if len(sys.argv) == 5:
         if sys.argv[4] == "-cvc5":
             solver_type = "cvc5" 
@@ -20,14 +21,17 @@ def main():
     
 
 def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False):
+    # start timing
+    start = time.perf_counter()
+
     # parse the create table queries to get schema 
     global schema, null_funcs
     schema, not_null, primary_keys = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
 
-    # if not test: 
-    #     print(f"schema: {schema}") # for debug use
-    #     print(f"primary keys: {primary_keys}") # for debug use 
-    #     print(f"not null attributes: {not_null}") # for debug use 
+    if not test: 
+        print(f"schema: {schema}") # for debug use
+        print(f"primary keys: {primary_keys}") # for debug use 
+        print(f"not null attributes: {not_null}") # for debug use 
 
     # parse each query
     q1_ast = parse_query(q1_file)
@@ -45,18 +49,21 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
 
     if solver_type == "z3":
         s = z3_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys)
+        result = s.check()
+        
         if test:
-            if s.check() == sat :
+            if result == sat:
                 return f"counterexample: {s.check()}"
             return "EQUIVALENT"
     
+        end = time.perf_counter()
         print(f"assertions: \n{s.assertions()}") # for debug use
-        print(f"\nresult: {s.check()}")
+        print(f"\nresult: {result}")
         if s.check() == sat :
             # print(s.model())
             print_counterexample_z3(schema, s.model())
         else :
-            print("Query 1 and 2 are equivalent")
+            print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
     else: #cvc5
         s, variables_to_interpret = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys) 
@@ -66,16 +73,16 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
                 return f"counterexample: {result}"
             return "EQUIVALENT"
         
+        end = time.perf_counter()
         print(f"assertions: \n{s.getAssertions()}") # for debug use
         print(f"\nresult: {result}")
 
         if result.isSat():
-            # todo
-            # print(s.getModel([], list(variables_to_interpret))) 
-            # print(variables_to_interpret)
-            print("Interpretation for cvc5 has not been implemented yet")
+            model = s.getModel([], list(variables_to_interpret))
+            model_str = model.decode("utf-8")
+            print_counterexample_cvc5(schema, model_str, 1)
         else :
-            print("Query 1 and 2 are equivalent")
+            print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
 
 
@@ -146,6 +153,44 @@ def print_counterexample_z3(schema, model):
         print("  -> Query 2 returns the tuple while Query 1 does not.")
     else:
         print("  -> No difference in outputs (Whoops???).")
+
+
+def print_counterexample_cvc5(schema, model_str, idx):
+    values = {}
+    for line in model_str.split("\n"):
+        line = line.strip()
+        if line.startswith("(define-fun"):
+            parts = line.replace("(", "").replace(")", "").split()
+            name = parts[1]
+            value = parts[-1]
+            values[name] = value
+
+    print("\nCounterexample:\n")
+
+    for table, cols in schema.items():
+        row_terms = []
+        for col, col_type in cols.items():
+            const_name = f"{table}__{col}"
+            if const_name not in values:
+                const_name = f"{table}_{'q1' if idx==1 else 'q2'}_{col}"  
+            val = values.get(const_name)
+            row_terms.append(f"{col.lower()}={val}")
+
+        print(f"Table {table}: ({', '.join(row_terms)})")
+
+    q1 = values.get("q1_result", "false").lower() == "true"
+    q2 = values.get("q2_result", "false").lower() == "true"
+
+    print("\nInterpretation:")
+    if q1 and not q2:
+        print("  -> Query 1 returned a row, Query 2 did not.")
+    elif q2 and not q1:
+        print("  -> Query 2 returned a row, Query 1 did not.")
+    elif q1 and q2:
+        print("  -> Both queries returned a row, what happened???")
+    else: 
+        print("  -> Both queries didn't return a row, what happened???")
+
 
 
 if __name__ == "__main__":

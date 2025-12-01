@@ -18,12 +18,12 @@ use command: python main.py test/create-table.sql test/join/inner_join3.sql test
   3.2. translate the current Z3-based encoding to CVC5 -- 2hr (probably more time)
        python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql -cvc5
        does not work as expected 
-  3.3. implement function to interpret the output/model of CVC5 solver - 1 hr 
-        -- looks like there's no method that we can directly call and get counterexample in good shape 
-        -- the only one that works is s.getModel([], list(variables_to_interpret))
-        -- but the output is in string type......
-  3.4. add timing for both Z3 and CVC5 - 0.5 hr 
-4.Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt - 3hr
+  3.3. implement function to interpret the output/model of CVC5 solver - 1 hr -- DONE
+  3.4. add timing for both Z3 and CVC5 - 0.5 hr -- DONE, rounded to 5th decimal place 
+
+
+Dec 1st:
+1.Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt - 3hr
 
 
 

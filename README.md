@@ -31,8 +31,4 @@ python main.py test/create-table.sql test/query1.sql test/query2.sql -cvc5
 python run_test.py -cvc5
 ```
 
-## What we will explore next
-- Integrate additional SMT solvers such as CVC5
-
-
 For more details on ongoing process, check note.txt
