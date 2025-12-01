@@ -17,6 +17,8 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
             alias_map = q2_alias_map
         columns = []
         for expr in ast.expressions: 
+            # todo: why I didn't see DISTINCT ??? 
+            # print(f"line20, expr = {expr}")
             if expr.key == "column": 
                 col_name = expr.args.get("this")
                 if col_name:
@@ -43,6 +45,8 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
 
     q1_cols = extract_select_cols(q1_ast, 1)
     q2_cols = extract_select_cols(q2_ast, 2)
+    # print(q1_cols)
+    # print(q2_cols)
     
     if q1_cols != q2_cols: # same column names
         err_message = (
@@ -120,10 +124,6 @@ def detect_unsupported(ast, idx):
     for f in list(ast.find_all(exp.Func)):
         if (f.key.lower() not in ["and", "or"]) :
             unsupported.append("Aggregation functions")
-
-    # # DISTINCT
-    # if ast.args.get("distinct"):
-    #     unsupported.append("DISTINCT")
 
     # UNION / INTERSECT / EXCEPT
     if list(ast.find_all(exp.Union)):

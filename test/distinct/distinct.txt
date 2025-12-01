@@ -38,7 +38,7 @@ expected: counterexample
 
 the key insight is that we need to check:
 
-1.If there is join?
+1.Is there an explicit or implicit join ?
 Yes --> 2.Will that affect the UNIQUENESS of key?
         No --> add constraint  
                (if T is on 

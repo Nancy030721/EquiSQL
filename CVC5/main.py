@@ -1,6 +1,7 @@
-import sys
-from sqlglot import expressions as exp
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from parser import parse_schema, parse_query
+from sqlglot import expressions as exp
 from encoder import encode
 from sanity_checker import sanity_check
 from z3 import *
@@ -8,19 +9,16 @@ from z3 import *
 
 def main():
     if len(sys.argv) != 4:
-        exit("Usage: python main.py create-table.sql query1.sql query2.sql (optional -t)")
-    run_equivalence_check(sys.argv[1], sys.argv[2], sys.argv[3])
-    
+        exit("Usage: python main.py create-table.sql query1.sql query2.sql")
+    schema_file, q1_file, q2_file = sys.argv[1], sys.argv[2], sys.argv[3]
 
-def run_equivalence_check(schema_file, q1_file, q2_file, test=False):
     # parse the create table queries to get schema 
     global schema, null_funcs
     schema, not_null, primary_keys = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
 
-    if not test: 
-        print(f"schema: {schema}") # for debug use
-        print(f"primary keys: {primary_keys}") # for debug use 
-        print(f"not null attributes: {not_null}") # for debug use 
+    print(f"schema: {schema}") # for debug use
+    print(f"primary keys: {primary_keys}") # for debug use 
+    print(f"not null attributes: {not_null}") # for debug use 
 
     # parse each query
     q1_ast = parse_query(q1_file)
@@ -36,11 +34,6 @@ def run_equivalence_check(schema_file, q1_file, q2_file, test=False):
     sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
     s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys)
-    if test:
-        if s.check() == sat :
-            return f"counterexample: {s.check()}"
-        return "EQUIVALENT"
-  
     print(f"assertions: \n{s.assertions()}") # for debug use
     print(f"\nresult: {s.check()}")
     if s.check() == sat :

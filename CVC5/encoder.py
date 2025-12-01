@@ -1,3 +1,11 @@
+# import cvc5
+# from cvc5 import Kind
+
+
+# solver = cvc5.Solver()
+# solver.setLogic("UFNIRA")   # Uninterpreted Functions + Int + Real + Arithmetic
+
+
 import sys
 from sqlglot import expressions as exp
 from z3 import *
@@ -100,6 +108,8 @@ def encode_query(schema, ast, idx, variables):
         cond_join = encode_join(schema, ast, idx, variables, set())
     cond_where = encode_where(schema, ast, idx, variables)
     
+    
+
     return And(cond_join, cond_where)
 
 # Extract tables referenced in a condition expression
@@ -109,23 +119,9 @@ def extract_tables_from_condition(expr, idx):
     # A right join B, and A exists in where
     # A full join B, and either A or B exists in where
 
+    # questions:
     # 1.if you see "A.id IS NULL", will that be treated as inner join? -- no
-    # 2.if you see "A.id IS NOT NULL", will that be treated as inner join? -- actually, not really 
-    #   e.g. 
-    #        SELECT FROM R FULL JOIN S ON R.id=S.id WHERE R.id IS NOT NULL -- yes, treat as inner join 
-    #        SELECT FROM R FULL JOIN S ON R.id=S.id WHERE S.id IS NOT NULL -- yes, treat as inner join 
-    #        SELECT FROM R FULL JOIN S ON R.id=S.id WHERE S.id IS NOT NULL AND S.id IS NOT NULL -- yes, treat as inner join 
-    #        SELECT FROM R FULL JOIN S ON R.id=S.id WHERE R.id IS NOT NULL OR S.id IS NOT NULL -- NO!  
-    
-    # can we always choose only one side (either left or right) of OR? 
-    #   e.g.
-    #        SELECT FROM R LEFT JOIN S ON R.id=S.id WHERE R.id IS NOT NULL OR S.id > 15
-    #           --- used to have wheretables = {R, S}, so will be treated as inner join as S in wheretables
-    #           --- if use wheretables = {R}, this will not be treated as inner join 
-    #        SELECT FROM R FULL JOIN S ON R.id=S.id WHERE R.id IS NOT NULL OR S.id IS NULL OR S.id > 15
-    #           --- used to have wheretables = {R, S} 
-    #           --- if use wheretables = {R}, this will not be treated as inner join -- no effects 
-    
+    # 2.if you see "A.id IS NOT NULL" will that be treated as inner join? -- yes
 
     global q1_alias_map, q2_alias_map
     if (idx == 1):
@@ -147,16 +143,9 @@ def extract_tables_from_condition(expr, idx):
                 tables.update(extract_tables_from_condition(left, idx))
             if right:
                 tables.update(extract_tables_from_condition(right, idx))
-        # new implementation:
-        elif key in ["and"]:
+        elif key in ["and", "or"]:
             tables.update(extract_tables_from_condition(expr.args["this"], idx))
             tables.update(extract_tables_from_condition(expr.args["expression"], idx))
-        elif key in ["or"]:
-            left_tables = extract_tables_from_condition(expr.args["this"], idx)
-            right_tables = extract_tables_from_condition(expr.args["expression"], idx)
-            for table in left_tables : 
-                if (table in right_tables): 
-                    tables.add(table)
         elif key == "not":
             tables.update(extract_tables_from_condition(expr.args["this"], idx))
 
@@ -215,7 +204,7 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
     for i in range(len(joins)) :
         join = joins[i]
         cond = join.args.get("on")
-        encoded_cond = encode_condition(schema, cond, idx, variables, join=True) #tidi
+        encoded_cond = encode_condition(schema, cond, idx, variables, join=True)
 
         # Extract right table from join - handle Table expression
         right_table_expr = join.args.get("this")
@@ -253,29 +242,19 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
 
             # for inner join, add constarint that left and right are not null
             global vars
-            
-            # doesn't work rn, example:
-                    # SELECT Students.name
-                    # FROM Students
-                    # JOIN Takes ON Takes.sid = Students.id
-                    # OR Students.id >= 3
-            # at this time, neither left or right is an expression, so we cannot get the type and set those to be not null
-            # I think we can implement a helper method, which go through every expr and decide whether we add a (NOT NULL) constraint on it
-            try: 
-                temp = encode_nulls(schema, cond, idx, encoded_cond)
-                # print(f"line274, query{idx}, temp={temp}")
-            except Exception as e:
-                exit(f"line277, Error: {e}")
-
-            
+            left, left_type = encode_expr(schema, idx, cond.args["this"], vars)
+            right, right_type = encode_expr(schema, idx, cond.args["expression"], vars)
+            temp = And(And(encoded_cond, (Not (encode_is_null(left, left_type)))), 
+                       (Not (encode_is_null(right, right_type))))
+        
         else: # outer join
             LeftJoin = Function("LeftJoin", IntSort(), IntSort(), BoolSort())
             FullJoin = Function('FullJoin', IntSort(), IntSort(), BoolSort())
 
             if (side == "left") :
-                temp = encode_left_join(encoded_cond, left_row, right_row, LeftJoin)
+                temp = encode_left_join(encoded_cond, left_row, right_row, LeftJoin, schema)
             elif (side == "right") :
-                temp = encode_left_join(encoded_cond, right_row, left_row, LeftJoin)
+                temp = encode_left_join(encoded_cond, right_row, left_row, LeftJoin, schema)
             elif (side == "full") :
                 temp = encode_full_join(encoded_cond, left_row, right_row, FullJoin)
             else:
@@ -286,84 +265,9 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
     return encoding
 
 
-
-                    
-def encode_nulls(schema, expr, idx, temp):
-    global vars
-    # print(f"line305, encode_nulls({expr}) in query{idx}")
-    key = expr.key.lower()
-
-    if isinstance(expr, exp.Condition):
-        if key in ["gt", "lt", "gte", "lte", "eq"]:
-            left, right = expr.args["this"], expr.args["expression"]
-            lnames, ltypes = encode_nulls_helper(schema, idx, left, vars)
-            rnames, rtypes = encode_nulls_helper(schema, idx, right, vars)
-            # print(f"line307, left={left}, right={right}")
-            lnotnull, rnotnull = BoolVal(True), BoolVal(True)
-            for i in range(len(lnames)):
-                lnotnull = And(lnotnull, Not (encode_is_null(lnames[i], ltypes[i])))
-            for i in range(len(rnames)):
-                rnotnull = And(rnotnull, Not (encode_is_null(rnames[i], rtypes[i])))
-            temp = And(temp, And(lnotnull, rnotnull))
-
-        elif key in ["and", "or"]:
-            left =  encode_nulls(schema, expr.args["this"], idx, BoolVal(True))
-            right = encode_nulls(schema, expr.args["expression"], idx, BoolVal(True))
-            if key == "and": 
-                temp = And(temp, And (left, right))
-            else :
-                temp = And(temp, Or (left, right))
-                    
-        elif key == "not":
-            temp = encode_nulls(schema, expr.args["this"], idx, temp)
-
-        elif key == "is":
-            names, types = encode_nulls_helper(schema, idx, expr.this, vars)
-            # print(f"line325, name={Z3_get_probe_name_bytes}")
-            for i in range(len(names)):
-                temp = And(temp, Not (encode_is_null(names[i], types[i])))
-
-        return temp
-
-    raise ValueError(f"Unsupported type: {key}")
-
-
-# modified version of encode_expr, main goal is to find all smallest unit of expressions that are columns 
-def encode_nulls_helper(schema, idx, expr, variables):
-    global q1_alias_map, q2_alias_map
-    if (idx == 1): 
-        alias_map = q1_alias_map
-    elif (idx == 2):
-        alias_map = q2_alias_map
-    # literals
-    if isinstance(expr, exp.Literal):
-        # do nothing
-        return [], []
-
-    names, types = [], []
-    if isinstance(expr, exp.Condition):
-        key = expr.key.lower()
-        if key in ["add", "sub", "mul"]:
-            left, right = expr.args["this"], expr.args["expression"]
-            lnames, ltypes = encode_nulls_helper(schema, idx, left, variables)
-            rnames, rtypes = encode_nulls_helper(schema, idx, right, variables)
-            names.extend(lnames)
-            names.extend(rnames)
-            types.extend(ltypes)
-            types.extend(rtypes)
-             
-    if isinstance(expr, exp.Column):
-        table = alias_map[str(expr.table)]
-        column = str(expr.this)
-        names = [variables[table][column]]
-        types = [schema[table][column]]
-    
-    return names, types
-
-    
-
-def encode_left_join(on_pred, left_row, right_row, LeftJoin):
+def encode_left_join(on_pred, left_row, right_row, LeftJoin, schema):
     global NULL
+    print(f"line254, left join, left_row = {left_row}, right_row = {right_row}")
     return And(
         (Not (encode_is_null(left_row, "INT"))), #left key is not null
         Implies(on_pred, LeftJoin(left_row, right_row)),
@@ -388,13 +292,10 @@ def encode_where(schema, ast, idx, variables):
 
     expr = where.this
     encoding = encode_condition(schema, expr, idx, variables)
-    # tidi
-    encoding = And(encode_nulls(schema, expr, idx, encoding))
     return encoding
 
 
 def encode_condition(schema, expr, idx, variables, join=False):
-    # print(f"line314, encode_condition({expr}) in query{idx}")
     global vars
     key = expr.key.lower()
 
@@ -405,14 +306,11 @@ def encode_condition(schema, expr, idx, variables, join=False):
             left, right = expr.args["this"], expr.args["expression"]
             constraint = encode_comparison(schema, idx, left, right, key, variables)
             if constraint is not None:
-                # tidi
-            #     if (not join) :
-            #         # todo
-            #         # add constraint saying that both sides cannot be null
-            #         left, left_type = encode_expr(schema, idx, left, vars)
-            #         right, right_type = encode_expr(schema, idx, right, vars)
-            #         print(f"line383, query{idx}, left = {left}, right = {right}")
-            #         return And(And(constraint, (Not (encode_is_null(left, left_type)))), (Not (encode_is_null(right, right_type))))
+                if (not join) :
+                    # add constraint saying that both sides cannot be null
+                    left, left_type = encode_expr(schema, idx, left, vars)
+                    right, right_type = encode_expr(schema, idx, right, vars)
+                    return And(And(constraint, (Not (encode_is_null(left, left_type)))), (Not (encode_is_null(right, right_type))))
                 
                 return constraint
         elif key == "and":
@@ -425,7 +323,6 @@ def encode_condition(schema, expr, idx, variables, join=False):
             return Not(encode_condition(schema, expr.args["this"], idx, variables))
         elif key == "is":
             name, type = encode_expr(schema, idx, expr.this, vars)
-            # print(f"line397, query{idx}, name = {name}")
             return encode_is_null(name, type)
 
     exit(f"Unsupported type: {key}")
@@ -434,7 +331,6 @@ def encode_condition(schema, expr, idx, variables, join=False):
 
 # convert a simple comparison expression to a Z3 constraint
 def encode_comparison(schema, idx, left, right, op, variables):
-    # print(f"line355, encode_comparison({left}, {op}, {right}) in query{idx}")
     var, _ = encode_expr(schema, idx, left, variables)
     right_val, _ = encode_expr(schema, idx, right, variables)
 
@@ -453,8 +349,7 @@ def encode_comparison(schema, idx, left, right, op, variables):
 
 # encode IS NULL conditions
 def encode_is_null(col_name, col_type="INT"):
-    # print(f"line429, {type(col_name)}")
-    # print(f"line450, col_name is {col_name}, type is {type(col_name)}")
+    # print(f"line330, col_name is {col_name}")
     global null_funcs, vars
     if col_type == "INT":
         return null_funcs[0](col_name)
@@ -466,7 +361,7 @@ def encode_is_null(col_name, col_type="INT"):
 # todo
 # encode DISTINCT for primary key and that in select clause
 def encode_is_distinct(col_name, col_type="INT"):
-    # print(f"line462, col_name is {col_name}")
+    # print(f"line330, col_name is {col_name}")
     global distinct_funcs, vars
     if col_type == "INT":
         return distinct_funcs[0](col_name)
@@ -477,7 +372,6 @@ def encode_is_distinct(col_name, col_type="INT"):
        
 
 def encode_expr(schema, idx, expr, variables):
-    # print(f"line473, encode_expr({expr}) in query{idx}")
     global q1_alias_map, q2_alias_map
     if (idx == 1): 
         alias_map = q1_alias_map
@@ -522,8 +416,7 @@ def encode_expr(schema, idx, expr, variables):
         column = str(expr.this)
         return variables[table][column], schema[table][column]
     
-    raise Exception(f"encode_expr: could not resolve {expr} in query{idx}")
-    # exit(f"encode_expr: could not resolve {expr} in query{idx}")
+    exit(f"encode_expr: could not resolve {expr}")
 
 
 def exit(err_message):

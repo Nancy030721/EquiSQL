@@ -1,50 +1,67 @@
-Nov 25th:
-Implemented NULL constraint using Z3 function, now it works fine with joins and non-nullable attributes 
+Nov 30th:
+1.Noticed a bug in NULL & JOIN -- debug, found more overlooked cases -- about 2.5 hrs -- DONE
+return EQUIVALENCE for the following queries: 
+Q1: SELECT Students.id, Students.name, Students.age, Takes.cid, Takes.GPA
+    FROM Students, Takes
+    WHERE Takes.sid = Students.id
+Q2: SELECT S.id, S.name, S.age, T.cid, T.GPA
+    FROM Students AS S
+    FULL JOIN Takes AS T
+        ON S.id = T.sid
+    WHERE T.sid IS NOT NULL OR S.id IS NOT NULL
 
-Nov 26th:
-Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt
+use command: python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_join3.sql
+
+2.add run_test.py, we can add test cases and expected output to that file and directly run it -- DONE, all tests passed
+3.Translate the current Z3-based encoding to CVC5 - 1hr 
+4.Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt - 3hr
 
 
-next steps:
-1.more test cases/explore some benchmarks
-2.explore other SMT solvers like CVC5
 
 commands to test:
-1.
+python run_test.py
+
+
+
+
+1. GOOD 
 python main.py test/create-table.sql test/query1.sql test/query2.sql
 expected: counterexample
-2.
+2. GOOD
 python main.py test/create-table2.sql test/query3.sql test/query4.sql
 expected: EQUIVALENT
-3.
+3. GOOD 
 python main.py test/create-table.sql test/join/inner_join.sql test/join/inner_join2.sql
 expected: EQUIVALENT
-4.
+4. GOOD
 python main.py test/create-table.sql test/join/left_join.sql test/join/left_join2.sql
 expected: counterexample
-5.
+5. GOOD 
 python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql
 expected: EQUIVALENT
-6.
+6. GOOD
 python main.py test/create-table.sql test/join/full_join.sql test/join/full_join2.sql
 expected: EQUIVALENT
-7. NEW ADDED --
+7. NEW ADDED -- GOOD
 python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_join3.sql
 expected: EQUIVALENT
+8. NEW ADDED -- GOOD
+python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_join4.sql
+expected: counterexample
 
 
 New test cases for (IS NULL / IS NOT NULL):
 python main.py test/create-table.sql test/null/null1.sql test/null/null2.sql
-expected: EQUIVALENT
+expected: EQUIVALENT -- GOOD 
 
 python main.py test/create-table.sql test/null/null3.sql test/null/null4.sql
-expected: EQUIVALENT
+expected: EQUIVALENT -- GOOD
 
 python main.py test/create-table.sql test/null/null5.sql test/null/null6.sql
-expected: EQUIVALENT
+expected: EQUIVALENT -- GOOD
 
 python main.py test/null/create-table3.sql test/null/null7.sql test/null/null8.sql
-expected: EQUIVALENT
+expected: EQUIVALENT -- GOOD
 
 
 
