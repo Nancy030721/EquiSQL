@@ -1,26 +1,33 @@
 import sys
 from sqlglot import expressions as exp
 from parser import parse_schema, parse_query
-from encoder import encode
 from sanity_checker import sanity_check
+import z3_encoder
 from z3 import *
+import cvc5_encoder
+from cvc5 import *
 
 
 def main():
-    if len(sys.argv) != 4:
-        exit("Usage: python main.py create-table.sql query1.sql query2.sql (optional -t)")
-    run_equivalence_check(sys.argv[1], sys.argv[2], sys.argv[3])
+    if len(sys.argv) < 4:
+        exit("Usage: python main.py create-table.sql query1.sql query2.sql (optional -z3 or -cvc5)")
+    solver_type = "z3"
+    if len(sys.argv) == 5:
+        if sys.argv[4] == "-cvc5":
+            solver_type = "cvc5" 
+    print(f"Running equivalence check using SMT solver: {solver_type.upper()}")
+    run_equivalence_check(sys.argv[1], sys.argv[2], sys.argv[3], solver_type)
     
 
-def run_equivalence_check(schema_file, q1_file, q2_file, test=False):
+def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False):
     # parse the create table queries to get schema 
     global schema, null_funcs
     schema, not_null, primary_keys = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
 
-    if not test: 
-        print(f"schema: {schema}") # for debug use
-        print(f"primary keys: {primary_keys}") # for debug use 
-        print(f"not null attributes: {not_null}") # for debug use 
+    # if not test: 
+    #     print(f"schema: {schema}") # for debug use
+    #     print(f"primary keys: {primary_keys}") # for debug use 
+    #     print(f"not null attributes: {not_null}") # for debug use 
 
     # parse each query
     q1_ast = parse_query(q1_file)
@@ -35,19 +42,41 @@ def run_equivalence_check(schema_file, q1_file, q2_file, test=False):
     # perform some cheap checks over the queries 
     sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
-    s = encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys)
-    if test:
+
+    if solver_type == "z3":
+        s = z3_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys)
+        if test:
+            if s.check() == sat :
+                return f"counterexample: {s.check()}"
+            return "EQUIVALENT"
+    
+        print(f"assertions: \n{s.assertions()}") # for debug use
+        print(f"\nresult: {s.check()}")
         if s.check() == sat :
-            return f"counterexample: {s.check()}"
-        return "EQUIVALENT"
-  
-    print(f"assertions: \n{s.assertions()}") # for debug use
-    print(f"\nresult: {s.check()}")
-    if s.check() == sat :
-        # print(s.model())
-        print_counterexample(schema, s.model())
-    else :
-        print("Query 1 and 2 are equivalent")
+            # print(s.model())
+            print_counterexample_z3(schema, s.model())
+        else :
+            print("Query 1 and 2 are equivalent")
+
+    else: #cvc5
+        s, variables_to_interpret = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys) 
+        result = s.checkSat()
+        if test:
+            if result.isSat():
+                return f"counterexample: {result}"
+            return "EQUIVALENT"
+        
+        print(f"assertions: \n{s.getAssertions()}") # for debug use
+        print(f"\nresult: {result}")
+
+        if result.isSat():
+            # todo
+            # print(s.getModel([], list(variables_to_interpret))) 
+            # print(variables_to_interpret)
+            print("Interpretation for cvc5 has not been implemented yet")
+        else :
+            print("Query 1 and 2 are equivalent")
+
 
 
 def build_alias_map(ast):
@@ -82,7 +111,7 @@ def print_ast(schema, q1_ast, q2_ast) :
 
 
 # print an input tuple and the different behaviors q1 and q2 have on it
-def print_counterexample(schema, model): 
+def print_counterexample_z3(schema, model): 
     q1_result = model.evaluate(Bool("q1_result"), model_completion=True)
     q2_result = model.evaluate(Bool("q2_result"), model_completion=True)
 

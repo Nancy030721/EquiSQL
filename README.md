@@ -14,13 +14,21 @@ EquiSQL is a lightweight SQL query equivalence checker that uses SMT solving to 
 - Reports counterexamples when queries differ
 
 ## Example usage
-### Run from the command line
+### Run from the command line using Z3
 ```bash
 python main.py test/create-table.sql test/query1.sql test/query2.sql
 ```
-### Run tests
+### Run tests using Z3
 ```bash
 python run_test.py
+```
+### Run from the command line using CVC5
+```bash
+python main.py test/create-table.sql test/query1.sql test/query2.sql -cvc5
+```
+### Run tests using CVC5
+```bash
+python run_test.py -cvc5
 ```
 
 ## What we will explore next

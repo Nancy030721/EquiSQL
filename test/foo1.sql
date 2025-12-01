@@ -1,0 +1,1 @@
+SELECT * FROM Students WHERE 1=2;

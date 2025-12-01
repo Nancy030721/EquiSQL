@@ -215,7 +215,7 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
     for i in range(len(joins)) :
         join = joins[i]
         cond = join.args.get("on")
-        encoded_cond = encode_condition(schema, cond, idx, variables, join=True) #tidi
+        encoded_cond = encode_condition(schema, cond, idx, variables, join=True) 
 
         # Extract right table from join - handle Table expression
         right_table_expr = join.args.get("this")
@@ -252,8 +252,6 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
             # since we always use AND to connect them.
 
             # for inner join, add constarint that left and right are not null
-            global vars
-            
             # doesn't work rn, example:
                     # SELECT Students.name
                     # FROM Students
@@ -388,8 +386,7 @@ def encode_where(schema, ast, idx, variables):
 
     expr = where.this
     encoding = encode_condition(schema, expr, idx, variables)
-    # tidi
-    encoding = And(encode_nulls(schema, expr, idx, encoding))
+    encoding = encode_nulls(schema, expr, idx, encoding)
     return encoding
 
 
@@ -405,15 +402,6 @@ def encode_condition(schema, expr, idx, variables, join=False):
             left, right = expr.args["this"], expr.args["expression"]
             constraint = encode_comparison(schema, idx, left, right, key, variables)
             if constraint is not None:
-                # tidi
-            #     if (not join) :
-            #         # todo
-            #         # add constraint saying that both sides cannot be null
-            #         left, left_type = encode_expr(schema, idx, left, vars)
-            #         right, right_type = encode_expr(schema, idx, right, vars)
-            #         print(f"line383, query{idx}, left = {left}, right = {right}")
-            #         return And(And(constraint, (Not (encode_is_null(left, left_type)))), (Not (encode_is_null(right, right_type))))
-                
                 return constraint
         elif key == "and":
             return And(encode_condition(schema, expr.args["this"], idx, variables),
@@ -499,21 +487,20 @@ def encode_expr(schema, idx, expr, variables):
         # handle math ops
         if key in ["add", "sub", "mul"]:
             left, right = expr.args["this"], expr.args["expression"]
-            left, left_type = encode_expr(schema, idx, left, variables)
-            right, right_type = encode_expr(schema, idx, right, variables)
+            left, ltype = encode_expr(schema, idx, left, variables)
+            right, rtype = encode_expr(schema, idx, right, variables)
             
-            if (left_type == "STRING" or right_type == "STRING"):
+            if (ltype == "STRING" or rtype == "STRING"):
                 exit("cannot perform arithematic operation on String type")
-            elif ((left_type != "INT" and left_type != "REAL") and 
-                  (right_type != "INT" and right_type != "REAL") and (left_type != right_type)):
-                exit(f"type mistach between {left_type} and {right_type}")
+            if not (ltype in ["INT", "REAL"] and rtype in ["INT", "REAL"]):
+                exit(f"type mismatch between {ltype} and {rtype}")
 
             if key == "add":
-                return left + right, left_type
+                return left + right, ltype
             elif key == "sub":
-                return left - right, left_type
+                return left - right, ltype
             elif key == "mul":
-                return left * right, left_type
+                return left * right, ltype
             else:
                 raise ValueError(f"Unsupported math operation {key}")
    
