@@ -8,7 +8,6 @@ from z3 import *
 # 1.they project the same number of columns and names
 # 2.they reference existing tables/columns
 # 3.they reference the same set of tables
-# 4.they have the same LIMIT and OFFSET 
 def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
     def extract_select_cols(ast, idx):
         if (idx == 1):

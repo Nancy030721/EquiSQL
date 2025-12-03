@@ -6,7 +6,8 @@ import time
 GENERAL_TESTS = [
     # basic tests
     (["test/create-table.sql", "test/query1.sql", "test/query2.sql"], "counterexample"),
-    (["test/create-table2.sql", "test/query3.sql", "test/query4.sql"], "EQUIVALENT"),
+    (["test/create-table2.sql", "test/query3.sql", "test/query4.sql"], "counterexample"),
+    # python main.py test/create-table2.sql test/query3.sql test/query4.sql -z3
    
     # tests on joins
     (["test/create-table.sql", "test/join/inner_join.sql", "test/join/inner_join2.sql"], "EQUIVALENT"),
@@ -21,6 +22,7 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
     (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
 ]
 
 

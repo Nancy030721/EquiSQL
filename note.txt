@@ -23,8 +23,36 @@ use command: python main.py test/create-table.sql test/join/inner_join3.sql test
 
 
 Dec 1st:
-1.Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt - 3hr
+1.There's something wrong with CVC5 encoder. 
+As mentioned above, when running the following command, we expect to see Equivalent, but get sat. 
+The encoding for CVC5 and Z3 looks the same to me. 
+And I don't quite understand why (not (= q1_result q2_result)) = true while q1_result = q2_result = false.
 
+   command: python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql -cvc5
+   output: 
+    assertions:
+        (= Students_q1_id Students_q2_id)
+        (= Students_q1_name Students_q2_name)
+        (= Students_q1_age Students_q2_age)
+        (= Takes_q1_sid Takes_q2_sid)
+        (= Takes_q1_cid Takes_q2_cid)
+        (= Takes_q1_GPA Takes_q2_GPA)
+        (let ((_let_1 (= Students_q1_id Takes_q1_sid))) (= q1_result (and (and (and (not (NullInt Takes_row)) (=> _let_1 (Join Takes_row Students_row)) (=> (not _let_1) (Join Takes_row NULL))) true) true true)))
+        (let ((_let_1 (= Takes_q2_sid Students_q2_id))) (= q2_result (and (and (and (not (NullInt Takes_row)) (=> _let_1 (Join Takes_row Students_row)) (=> (not _let_1) (Join Takes_row NULL))) true) true true)))
+        (not (= q1_result q2_result))
+
+        result: sat
+
+        Counterexample:
+        Table Students: (id=0, name="", age=0)
+        Table Courses: (cid=None, cname=None, instructor=None)
+        Table Takes: (sid=0, cid=0, gpa=0.0)
+        line180 in main.py, q1_result = false, q2_result = false
+
+        Interpretation:
+        -> Both queries returned nothing, what happened???
+
+2.Implement Primary key and DISTINCT -- check details in test/distinct/distinct.txt - 3hr
 
 
 commands to test:
@@ -42,3 +70,72 @@ Some examples of how to use Z3 in python, and functionalities that are supported
 3.
 https://cvc5.github.io/docs/cvc5-1.0.0/api/cpp/term.html
 syntax/structure for CVC5
+
+
+
+
+debug notes:
+Do they have the same assertions? 
+
+
+Z3 version:
+python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql
+assertions: 
+[Students_q1_id == Students_q2_id,
+ Students_q1_name == Students_q2_name,
+ Students_q1_age == Students_q2_age,
+ Takes_q1_sid == Takes_q2_sid,
+ Takes_q1_cid == Takes_q2_cid,
+ Takes_q1_GPA == Takes_q2_GPA,
+ q1_result ==
+ And(And(And(Not(NullInt(Takes_row)),
+             Implies(Students_q1_id == Takes_q1_sid,
+                     Join(Takes_row, Students_row)),
+             Implies(Not(Students_q1_id == Takes_q1_sid),
+                     Join(Takes_row, -1)),
+             Implies(Join(Takes_row, Students_row),
+                     Students_q1_id == Takes_q1_sid)),
+         True),
+     And(True, True)),
+ q2_result ==
+ And(And(And(Not(NullInt(Takes_row)),
+             Implies(Takes_q2_sid == Students_q2_id,
+                     Join(Takes_row, Students_row)),
+             Implies(Not(Takes_q2_sid == Students_q2_id),
+                     Join(Takes_row, -1)),
+             Implies(Join(Takes_row, Students_row),
+                     Takes_q2_sid == Students_q2_id)),
+         True),
+     And(True, True)),
+ q1_result != q2_result]
+
+
+CVC5 version: 
+python main.py test/create-table.sql test/join/left_join3.sql test/join/right_join2.sql -cvc5
+assertions:
+(= NULL (- 1))
+(= Students_q1_id Students_q2_id)
+(= Students_q1_name Students_q2_name)
+(= Students_q1_age Students_q2_age)
+(= Takes_q1_sid Takes_q2_sid)
+(= Takes_q1_cid Takes_q2_cid)
+(= Takes_q1_GPA Takes_q2_GPA)
+(let ((_let_1 (= Students_q1_id Takes_q1_sid))) (let ((_let_2 (Join Takes_row Students_row))) (= q1_result (and (and (and (not (NullInt Takes_row)) (=> _let_1 _let_2) (=> (not _let_1) (Join Takes_row NULL)) (=> _let_2 _let_1)) true) true true))))
+(let ((_let_1 (= Takes_q2_sid Students_q2_id))) (let ((_let_2 (Join Takes_row Students_row))) (= q2_result (and (and (and (not (NullInt Takes_row)) (=> _let_1 _let_2) (=> (not _let_1) (Join Takes_row NULL)) (=> _let_2 _let_1)) true) true true))))
+(not (= q1_result q2_result))
+
+
+
+
+python main.py test/create-table.sql test/query1.sql test/query2.sql -cvc5
+
+
+
+..
+So the idea is: when we say q1_result is true, it’s really just a logical condition that’s been met in the logic of your encoding. 
+It’s not necessarily a direct guarantee that a row is returned. 
+It’s more like saying, “Under the current model, the conditions for Query 1 to produce a result are logically satisfied.” 
+It’s a kind of abstract indicator rather than a direct “yes, here’s a row” signal. And the same goes for q2_result.
+
+it's better to say 
+under some condition, query1 and query2 are going to take different paths or have different outcome  

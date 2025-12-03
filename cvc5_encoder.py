@@ -17,8 +17,8 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     # this causes error because the second argument is name for variable, that has type str
     # NULL = s.mkConst(s.getIntegerSort(), -1) 
     NULL = s.mkConst(s.getIntegerSort(), "NULL")
-    eq_null = s.mkTerm(Kind.EQUAL, NULL, s.mkInteger(-1))
-    s.assertFormula(eq_null)
+    # eq_null = s.mkTerm(Kind.EQUAL, NULL, s.mkInteger(-1))
+    # s.assertFormula(eq_null)
     variables_to_interpret = set()
 
     
@@ -63,6 +63,7 @@ def encode(schema, q1_ast, q2_ast, map1, map2, nn, pk):
     s.assertFormula(s.mkTerm(Kind.EQUAL, q1_result, cond_q1))
     s.assertFormula(s.mkTerm(Kind.EQUAL, q2_result, cond_q2))
     s.assertFormula(s.mkTerm(Kind.NOT, s.mkTerm(Kind.EQUAL, q1_result, q2_result)))
+
     variables_to_interpret.add(q1_result)
     variables_to_interpret.add(q2_result)
 
@@ -96,8 +97,9 @@ def declare_variables(schema, idx):
             else: #col_type == "REAL"
                 variables[table][column] = s.mkConst(s.getRealSort(), var_name)
     
-    if (idx != ""):
+    if idx != "":
         extract_values(variables.values())
+    # extract_values(variables.values())
     return variables
 
 
@@ -291,25 +293,21 @@ def encode_join(schema, ast, idx, variables, where_tables=None):
 
             
         else: # outer join
-            lj_sort = s.mkFunctionSort([s.getIntegerSort(), s.getIntegerSort()], s.getBooleanSort())
-            fj_sort = s.mkFunctionSort([s.getIntegerSort(), s.getIntegerSort()], s.getBooleanSort())
-            LeftJoin = s.mkConst(lj_sort, "LeftJoin")
-            FullJoin = s.mkConst(fj_sort, "FullJoin")
+            join_sort = s.mkFunctionSort([s.getIntegerSort(), s.getIntegerSort()], s.getBooleanSort())
+            Join = s.mkConst(join_sort, "Join")
 
             if (side == "left") :
-                temp = encode_left_join(encoded_cond, left_row, right_row, LeftJoin)
+                temp = encode_left_join(encoded_cond, left_row, right_row, Join)
             elif (side == "right") :
-                temp = encode_left_join(encoded_cond, right_row, left_row, LeftJoin)
+                temp = encode_left_join(encoded_cond, right_row, left_row, Join)
             elif (side == "full") :
-                temp = encode_full_join(encoded_cond, left_row, right_row, FullJoin)
+                temp = encode_full_join(encoded_cond, left_row, right_row, Join)
             else:
                 exit(f"unknown join type: {side.upper()} JOIN")
 
         encoding = s.mkTerm(Kind.AND, temp, encoding)
 
     return encoding
-
-
 
                     
 def encode_nulls(schema, expr, idx, temp):
@@ -389,25 +387,25 @@ def encode_nulls_helper(schema, idx, expr, variables):
 
     
 
-def encode_left_join(on_pred, left_row, right_row, LeftJoin):
+def encode_left_join(on_pred, left_row, right_row, Join):
     global s, NULL
-    join_call = s.mkTerm(Kind.APPLY_UF, LeftJoin, left_row, right_row)
+    join_call = s.mkTerm(Kind.APPLY_UF, Join, left_row, right_row)
     return s.mkTerm(Kind.AND, 
         s.mkTerm(Kind.NOT, (encode_is_null(left_row, "INT"))), #left key is not null
         s.mkTerm(Kind.IMPLIES, on_pred, join_call),
-        s.mkTerm(Kind.IMPLIES, s.mkTerm(Kind.NOT, on_pred), s.mkTerm(Kind.APPLY_UF, LeftJoin, left_row, NULL)),
-        s.mkTerm(Kind.IMPLIES, join_call, on_pred)
+        s.mkTerm(Kind.IMPLIES, s.mkTerm(Kind.NOT, on_pred), s.mkTerm(Kind.APPLY_UF, Join, left_row, NULL)),
+        # s.mkTerm(Kind.IMPLIES, join_call, on_pred)
     )
 
-def encode_full_join(on_pred, left_row, right_row, FullJoin):
+def encode_full_join(on_pred, left_row, right_row, Join):
     global s, NULL
-    join_call = s.mkTerm(Kind.APPLY_UF, FullJoin, left_row, right_row)
+    join_call = s.mkTerm(Kind.APPLY_UF, Join, left_row, right_row)
     return s.mkTerm(Kind.AND, 
         s.mkTerm(Kind.IMPLIES, on_pred, join_call),
         s.mkTerm(Kind.IMPLIES, s.mkTerm(Kind.NOT, on_pred), 
-                 s.mkTerm(Kind.APPLY_UF, FullJoin, left_row, NULL), 
-                 s.mkTerm(Kind.APPLY_UF, FullJoin, NULL, right_row)),
-        s.mkTerm(Kind.IMPLIES, join_call, on_pred) 
+                 s.mkTerm(Kind.APPLY_UF, Join, left_row, NULL), 
+                 s.mkTerm(Kind.APPLY_UF, Join, NULL, right_row)),
+        # s.mkTerm(Kind.IMPLIES, join_call, on_pred) 
     )
     
 

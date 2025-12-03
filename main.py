@@ -13,14 +13,17 @@ def main():
     if len(sys.argv) < 4:
         exit("Usage: python main.py create-table.sql query1.sql query2.sql (optional -z3 or -cvc5)")
     solver_type = "z3" #z3 as default
-    if len(sys.argv) == 5:
-        if sys.argv[4] == "-cvc5":
+    print_assertion = False
+    if len(sys.argv) >= 5:
+        if sys.argv[4].lower() == "-cvc5":
             solver_type = "cvc5" 
+        print_assertion = sys.argv[4].lower() == "-a" or (len(sys.argv) > 5 and sys.argv[5].lower() == "-a")  
+
     print(f"Running equivalence check using SMT solver: {solver_type.upper()}")
-    run_equivalence_check(sys.argv[1], sys.argv[2], sys.argv[3], solver_type)
+    run_equivalence_check(sys.argv[1], sys.argv[2], sys.argv[3], solver_type, False, print_assertion)
     
 
-def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False):
+def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False, print_assertion=False):
     # start timing
     start = time.perf_counter()
 
@@ -36,7 +39,8 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
     # parse each query
     q1_ast = parse_query(q1_file)
     q2_ast = parse_query(q2_file)
-    # print_ast(schema, q1_ast, q2_ast) # for debug use
+    # if not test:
+    #     print_ast(schema, q1_ast, q2_ast) # for debug use
 
     q1_alias_map = build_alias_map(q1_ast)
     q2_alias_map = build_alias_map(q2_ast)
@@ -57,7 +61,15 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
             return "EQUIVALENT"
     
         end = time.perf_counter()
-        print(f"assertions: \n{s.assertions()}") # for debug use
+
+        if print_assertion:
+            print("assertions:[")
+            for a in s.assertions():
+                print("  ", simplify(a)) # for debug use
+                # print("  ", a) # for debug use
+            print("]")
+        
+
         print(f"\nresult: {result}")
         if s.check() == sat :
             # print(s.model())
@@ -66,7 +78,7 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
             print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
     else: #cvc5
-        s, variables_to_interpret = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys) 
+        s, variables_to_interpret  = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys) 
         result = s.checkSat()
         if test:
             if result.isSat():
@@ -74,13 +86,16 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
             return "EQUIVALENT"
         
         end = time.perf_counter()
-        print(f"assertions: \n{s.getAssertions()}") # for debug use
+        if print_assertion:
+            print(f"assertions:") # for debug use, improved readability
+            for assertion in s.getAssertions():
+                print(assertion)
         print(f"\nresult: {result}")
 
         if result.isSat():
             model = s.getModel([], list(variables_to_interpret))
             model_str = model.decode("utf-8")
-            print_counterexample_cvc5(schema, model_str, 1)
+            print_counterexample_cvc5(schema, model_str)
         else :
             print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
@@ -102,60 +117,53 @@ def build_alias_map(ast):
 
 
 def print_ast(schema, q1_ast, q2_ast) :
-    # locator
-    print("----- Schema -----")
-    for table, cols in schema.items():
-        print(f"{table}: {cols}")
-    print("----- End of Schema -----")
+    # # locator
+    # print("----- Schema -----")
+    # for table, cols in schema.items():
+    #     print(f"{table}: {cols}")
+    # print("----- End of Schema -----")
 
-    # print("\n----- Query 1 AST -----")
-    # print(repr(q1_ast))
-    # # print(q1_ast.sql(pretty=True))
-    # # print(q1_ast.dump())
+    print("\n------- Query 1 AST -----")
+    print(repr(q1_ast))
+    # print(q1_ast.sql(pretty=True))
+    # print(q1_ast.dump())
 
-    # print("\n----- Query 2 AST -----")
+    # print("\n------- Query 2 AST -----")
     # print(repr(q2_ast))
 
 
-# print an input tuple and the different behaviors q1 and q2 have on it
+
 def print_counterexample_z3(schema, model): 
-    q1_result = model.evaluate(Bool("q1_result"), model_completion=True)
-    q2_result = model.evaluate(Bool("q2_result"), model_completion=True)
+    valuation = {d.name(): model[d] for d in model.decls()}
 
-    # group values by table and query index
-    tuples = {}
-    for d in model.decls():
-        name = d.name()
-        val = model[d]
+    print("\n===== COUNTEREXAMPLE FOUND =====")
 
-        if name.lower() in ["q1_result", "q2_result"]:
-            continue
+    # Print the base tables
+    print("\n----- Base Table Rows -----")
+    for table, attributes in schema.items():
+        row_data = {attr: valuation.get(f"{table}_q1_{attr}", 'NULL')
+                    for attr in attributes}
+        print(f"{table}: {row_data}")
 
-        parts = name.split("_")
-        if len(parts) < 3:
-            continue
+    # Show the query results and interpret them
+    q1_result = valuation.get("q1_result", None)
+    q2_result = valuation.get("q2_result", None)
+    
+    print("\n----- Query Results Interpretation -----")
+    if q1_result is not None:
+        print(f"Query 1 Result: {'Condition met' if q1_result else 'Condition not met'}")
 
-        table = parts[0]
-        col = "_".join(parts[2:])  # skip Q1/Q2 middle part
+    if q2_result is not None:
+        print(f"Query 2 Result: {'Condition met' if q2_result else 'Condition not met'}")
 
-        tuples.setdefault(table, {})[col] = val # we only keep one entry per table.column
+    print("\n----- Raw Model -----")
+    print(model)
 
-    for table, cols in tuples.items():
-        if table in schema.keys():
-            attrs_str = ", ".join(f"{k}={v}" for k, v in cols.items())
-            print(f"Table {table}: ({attrs_str})")
-
-
-    print("Interpretation:")
-    if q1_result and not q2_result:
-        print("  -> Query 1 returns the tuple while Query 2 does not.")
-    elif q2_result and not q1_result:
-        print("  -> Query 2 returns the tuple while Query 1 does not.")
-    else:
-        print("  -> No difference in outputs (Whoops???).")
+    print("\n==========================================")
 
 
-def print_counterexample_cvc5(schema, model_str, idx):
+
+def print_counterexample_cvc5(schema, model_str):
     values = {}
     for line in model_str.split("\n"):
         line = line.strip()
@@ -169,27 +177,33 @@ def print_counterexample_cvc5(schema, model_str, idx):
 
     for table, cols in schema.items():
         row_terms = []
-        for col, col_type in cols.items():
-            const_name = f"{table}__{col}"
-            if const_name not in values:
-                const_name = f"{table}_{'q1' if idx==1 else 'q2'}_{col}"  
-            val = values.get(const_name)
-            row_terms.append(f"{col.lower()}={val}")
+        for col, _ in cols.items():
+            q1_const_name = f"{table}_{'q1'}_{col}"  
+            q2_const_name = f"{table}_{'q2'}_{col}"  
+            q1_const_val = values.get(q1_const_name)
+            q2_const_val = values.get(q2_const_name)
+            if q1_const_val != q2_const_val:
+                exit("Query 1 and 2 takes different input, this should never happen")
+            row_terms.append(f"{col.lower()}={q1_const_val}")
 
         print(f"Table {table}: ({', '.join(row_terms)})")
 
-    q1 = values.get("q1_result", "false").lower() == "true"
-    q2 = values.get("q2_result", "false").lower() == "true"
+    q1 = values.get("q1_result").lower() == "true"
+    q2 = values.get("q2_result").lower() == "true"
+    
+    print(f"line180 in main.py, q1_result = {values.get('q1_result')}, q2_result = {values.get('q2_result')}")
+
 
     print("\nInterpretation:")
     if q1 and not q2:
         print("  -> Query 1 returned a row, Query 2 did not.")
     elif q2 and not q1:
         print("  -> Query 2 returned a row, Query 1 did not.")
+    # these branches should never be reached
     elif q1 and q2:
-        print("  -> Both queries returned a row, what happened???")
+        exit("  -> Both queries returned a row, what happened???")
     else: 
-        print("  -> Both queries didn't return a row, what happened???")
+        exit("  -> Both queries returned nothing, what happened???")
 
 
 
