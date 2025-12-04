@@ -32,7 +32,8 @@ def parse_schema(schema_path):
 
                 if (len(ls) == 4):
                     if ((ls[2].upper() == "NOT" and ls[3].upper() == "NULL") or 
-                        (ls[2].upper() == "PRIMARY" and ls[3].upper() == "KEY")) :
+                        (ls[2].upper() == "PRIMARY" and ls[3].upper() == "KEY") or 
+                        (ls[2].upper() == "FOREIGN" and ls[3].upper() == "KEY")) :
                         not_null[name].append(cname)
                         if (ls[2].upper() == "PRIMARY" and ls[3].upper() == "KEY") :
                             primary_keys[name] = cname

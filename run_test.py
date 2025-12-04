@@ -13,17 +13,20 @@ GENERAL_TESTS = [
     # python main.py test/create-table.sql test/join/inner_join.sql test/join/inner_join2.sql -z3
     (["test/create-table.sql", "test/join/inner_join.sql", "test/join/inner_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/left_join.sql", "test/join/left_join2.sql"], "counterexample"),
+    (["test/create-table.sql", "test/join/left_join2.sql", "test/join/cartisian_product.sql"], "counterexample"), 
     (["test/create-table.sql", "test/join/left_join3.sql", "test/join/right_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/full_join.sql",  "test/join/full_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join3.sql"], "EQUIVALENT"),
-    (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join4.sql"], "counterexample"),
+    (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join4.sql"], "EQUIVALENT"), 
+    
 
-    # # tests on NULL and NOT NULL
-    # (["test/create-table.sql", "test/null/null1.sql", "test/null/null2.sql"], "EQUIVALENT"),
-    # (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
-    # (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
-    # (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
-    # (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
+    # tests on NULL and NOT NULL
+    (["test/create-table.sql", "test/null/null1.sql", "test/null/null2.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
+    (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
+    # (["test/null/create-table3.sql", "test/null/null11.sql",  "test/null/null12.sql"], "EQUIVALENT"), #new added
 ]
 
 
