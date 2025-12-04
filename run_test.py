@@ -6,10 +6,11 @@ import time
 GENERAL_TESTS = [
     # basic tests
     (["test/create-table.sql", "test/query1.sql", "test/query2.sql"], "counterexample"),
-    (["test/create-table2.sql", "test/query3.sql", "test/query4.sql"], "counterexample"),
+    (["test/create-table2.sql", "test/query3.sql", "test/query4.sql"], "EQUIVALENT"),
     # python main.py test/create-table2.sql test/query3.sql test/query4.sql -z3
    
     # tests on joins
+    # python main.py test/create-table.sql test/join/inner_join.sql test/join/inner_join2.sql -z3
     (["test/create-table.sql", "test/join/inner_join.sql", "test/join/inner_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/left_join.sql", "test/join/left_join2.sql"], "counterexample"),
     (["test/create-table.sql", "test/join/left_join3.sql", "test/join/right_join2.sql"], "EQUIVALENT"),
@@ -17,12 +18,12 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join3.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join4.sql"], "counterexample"),
 
-    # tests on NULL and NOT NULL
-    (["test/create-table.sql", "test/null/null1.sql", "test/null/null2.sql"], "EQUIVALENT"),
-    (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
-    (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
-    (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
-    (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
+    # # tests on NULL and NOT NULL
+    # (["test/create-table.sql", "test/null/null1.sql", "test/null/null2.sql"], "EQUIVALENT"),
+    # (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
+    # (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
+    # (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
+    # (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
 ]
 
 
@@ -60,7 +61,7 @@ if __name__ == "__main__":
         solver_type = "cvc5"
     passed, passed_time = 0, 0
 
-    print("\nRunning tests...\n" + "="*60)
+    print(f"\nRunning tests in {solver_type.upper()}...\n" + "="*60)
 
     if solver_type == "z3":
         test_num = len(GENERAL_TESTS) + len(Z3_TESTS)

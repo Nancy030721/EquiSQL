@@ -1,0 +1,25 @@
+assertions:[
+   q1_match ==
+And(Takes_present,
+    Students_present,
+    Students_id == Takes_sid)
+   q1_right_null ==
+And(Takes_present, Not(Students_id == Takes_sid))
+   Not(q1_left_null)
+   q1_after_match == q1_match
+   q1_after_right_null == q1_right_null
+   q1_after_left_null == q1_left_null
+   q2_match ==
+And(Students_present,
+    Takes_present,
+    Takes_sid == Students_id)
+   Not(q2_right_null)
+   q2_left_null ==
+And(Takes_present, Not(Takes_sid == Students_id))
+   q2_after_match == q2_match
+   q2_after_right_null == q2_right_null
+   q2_after_left_null == q2_left_null
+   Or(Not(q1_after_match == q2_after_match),
+   Not(q1_after_right_null == q2_after_right_null),
+   Not(q1_after_left_null == q2_after_left_null))
+]

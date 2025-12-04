@@ -81,6 +81,9 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
             f"Queries do not reference the same set of tables: Query1: {q1_alias_map.values()} vs Query 2: {q2_alias_map.values()}."
         )
         exit(err_message)
+    
+    if len(q1_alias_map.values()) > 2: 
+        exit("Only support equivalence check on at most two relations.")
 
     
     # check if LIMIT and OFFSET matches

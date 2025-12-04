@@ -128,8 +128,8 @@ def print_ast(schema, q1_ast, q2_ast) :
     # print(q1_ast.sql(pretty=True))
     # print(q1_ast.dump())
 
-    # print("\n------- Query 2 AST -----")
-    # print(repr(q2_ast))
+    print("\n------- Query 2 AST -----")
+    print(repr(q2_ast))
 
 
 
@@ -141,26 +141,41 @@ def print_counterexample_z3(schema, model):
     # Print the base tables
     print("\n----- Base Table Rows -----")
     for table, attributes in schema.items():
-        row_data = {attr: valuation.get(f"{table}_q1_{attr}", 'NULL')
+        row_data = {attr: valuation.get(f"{table}_{attr}", 'NULL')
                     for attr in attributes}
         print(f"{table}: {row_data}")
 
     # Show the query results and interpret them
-    q1_result = valuation.get("q1_result", None)
-    q2_result = valuation.get("q2_result", None)
+    q1_after_match = valuation.get("q1_after_match", None)
+    q2_after_match = valuation.get("q2_after_match", None)
+
+    q1_after_rnull = valuation.get("q1_after_right_null", None)
+    q2_after_rnull = valuation.get("q2_after_right_null", None)
+
+    q1_after_lnull = valuation.get("q1_after_left_null", None)
+    q2_after_lnull = valuation.get("q2_after_left_null", None)
     
     print("\n----- Query Results Interpretation -----")
-    if q1_result is not None:
-        print(f"Query 1 Result: {'Condition met' if q1_result else 'Condition not met'}")
+    if not q1_after_match.eq(q2_after_match):
+        print(f"(MATCH ROW) Q1: {q1_after_match}, Q2: {q2_after_match}")
 
-    if q2_result is not None:
-        print(f"Query 2 Result: {'Condition met' if q2_result else 'Condition not met'}")
+    if not q1_after_rnull.eq(q2_after_rnull):
+        print(f"(RIGHT NULL ROW) Q1: {q1_after_rnull}, Q2: {q2_after_rnull}")
+
+    if not q1_after_lnull.eq(q2_after_lnull):
+        print(f"(LEFT NULL ROW) Q1: {q1_after_lnull}, Q2: {q2_after_lnull}")
 
     print("\n----- Raw Model -----")
     print(model)
 
     print("\n==========================================")
 
+
+def get_bool(m, name):
+    v = m.get(name)
+    if v is None:
+        return None
+    return m.eval(v, model_completion=True).is_true()
 
 
 def print_counterexample_cvc5(schema, model_str):
