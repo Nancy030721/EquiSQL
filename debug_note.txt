@@ -10,50 +10,58 @@ plan to encode NULL constraint:
 
 
 
-
 assertions:[
-   q1_match == And(Students_present, Takes_present)
-   Not(q1_right_null)
-   Not(q1_left_null)
-   q1_after_match ==
-And(q1_match,
+   q1_match ==
+And(Students_present,
+    Takes_present,
     Not(sid_is_null),
-    Not(id_is_null),
-    Takes_sid == Students_id)
-   Not(q1_after_right_null)
-   Not(q1_after_left_null)
+    Students_id == Takes_sid)
+
+   q1_right_null ==
+And(Students_present,
+    Not(And(Not(sid_is_null), Students_id == Takes_sid)),
+    sid_is_null,
+    cid_is_null,
+    GPA_is_null)
+
+   Not(q1_left_null)
+
+   q1_after_match == q1_match
+
+   q1_after_right_null == q1_right_null
+
+   q1_after_left_null == q1_left_null
 
 
    q2_match ==
 And(Students_present,
     Takes_present,
-    Not(id_is_null),
     Not(sid_is_null),
     Students_id == Takes_sid)
 
    q2_right_null ==
 And(Students_present,
-    Not(And(Not(id_is_null),
-            Not(sid_is_null),
-            Students_id == Takes_sid)),
+    Not(And(Not(sid_is_null), Students_id == Takes_sid)),
     sid_is_null,
     cid_is_null,
     GPA_is_null)
 
-   q2_left_null ==
-And(Takes_present,
-    Not(And(Not(id_is_null),
-            Not(sid_is_null),
-            Students_id == Takes_sid)),
-    id_is_null,
-    name_is_null,
-    age_is_null)
-    
-   q2_after_match == And(q2_match, Or(Not(sid_is_null), Not(id_is_null)))
+   Not(q2_left_null)
+
+   q2_after_match == And(q2_match, Not(J2_Students_id_isnull))
+
    Not(q2_after_right_null)
+
    Not(q2_after_left_null)
 
+   
    Or(Not(q1_after_match == q2_after_match),
    Not(q1_after_right_null == q2_after_right_null),
    Not(q1_after_left_null == q2_after_left_null))
 ]
+
+
+
+
+Schema says base Students.id cannot be NULL
+FULL JOIN asks you to output a NULL-valued Students.id

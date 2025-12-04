@@ -42,6 +42,7 @@ def encode_diff() :
 # declare Z3 variables for all attributes in all tables
 # returns a map, which maps dict[table][column] -> Z3 variable
 def declare_variables(schema):  
+    global not_nulls
     variables = {}
     variables["present"] = {}
 
@@ -59,12 +60,18 @@ def declare_variables(schema):
             else: #col_type == "REAL"
                 variables[table][column] = Real(var_name)
             # add 'is_null' flags for every attribute
-            variables[table][f"{column}_is_null"] = Bool(f"{column}_is_null") 
+            if table in not_nulls and column in not_nulls[table]:
+                variables[table][f"{column}_is_null"] = BoolVal(False)
+            else: 
+                variables[table][f"{column}_is_null"] = Bool(f"{table}_{column}_is_null") 
     
     return variables
 
 
+
 def encode_query(ast, idx):
+    # global vars
+    # print(vars)
     join_type = encode_join(ast, idx)
     encode_where(ast, idx, join_type)
 
@@ -84,7 +91,7 @@ def encode_where(ast, idx, join_type):
 
     where = ast.args.get("where")
     if where:
-        cond_where = encode_condition(where.this, idx)
+        cond_where = encode_condition(where.this, idx, where=True)
     else: 
         cond_where = BoolVal(True)
     
@@ -135,26 +142,26 @@ def encode_where(ast, idx, join_type):
 
 
 # DONE
-def encode_condition(expr, idx):
+def encode_condition(expr, idx, where=False):
     key = expr.key.lower()
 
     if isinstance(expr, exp.Condition):
         if key in ["gt", "lt", "gte", "lte", "eq", "neq"]:
             left, right = expr.args["this"], expr.args["expression"]
-            constraint = encode_comparison(idx, left, right, key)
+            constraint = encode_comparison(idx, left, right, key, where)
             if constraint is not None:
                 return constraint
         elif key == "and":
             # not perfect SQL semantics (stricter than SQL), but still works
-            return And(encode_condition(expr.args["this"], idx),
-                   encode_condition(expr.args["expression"], idx))
+            return And(encode_condition(expr.args["this"], idx, where),
+                   encode_condition(expr.args["expression"], idx, where))
         elif key == "or":
-            return Or(encode_condition(expr.args["this"], idx),
-                   encode_condition(expr.args["expression"], idx))
+            return Or(encode_condition(expr.args["this"], idx, where),
+                   encode_condition(expr.args["expression"], idx, where))
         elif key == "not": # (T.sid IS NOT NULL) is parsed as (NOT T.sid IS NULL)
-            return Not(encode_condition(expr.args["this"], idx))
+            return Not(encode_condition(expr.args["this"], idx, where))
         elif key == "is":
-            _, _, col_is_null = encode_expr(idx, expr.this)                
+            _, _, col_is_null = encode_expr(idx, expr.this, where)              
             return col_is_null[0]
             
 
@@ -162,9 +169,9 @@ def encode_condition(expr, idx):
 
 
 
-def encode_comparison(idx, left, right, op):
-    left, _, lcols = encode_expr(idx, left)
-    right, _, rcols = encode_expr(idx, right)
+def encode_comparison(idx, left, right, op, where):
+    left, _, lcols = encode_expr(idx, left, where)
+    right, _, rcols = encode_expr(idx, right, where)
 
     left_null  = Or(BoolVal(False), *lcols)   # left is null, if any columns in it is null. e.g. A + B = C+3, left_null = OR(A_is_null, B_is_null)
     right_null = Or(BoolVal(False), *rcols)
@@ -193,7 +200,7 @@ def sql_cmp_base(left_val, left_null, right_val, right_null, op):
 
     
 # DONE 
-def encode_expr(idx, expr):
+def encode_expr(idx, expr, where=False):
     # literals
     if isinstance(expr, exp.Literal):
         if expr.is_int:
@@ -209,8 +216,8 @@ def encode_expr(idx, expr):
         key = expr.key.lower()
         if key in ["add", "sub", "mul"]:
             left, right = expr.args["this"], expr.args["expression"]
-            left, ltype, lcols = encode_expr(idx, left)
-            right, rtype, rcols = encode_expr(idx, right)
+            left, ltype, lcols = encode_expr(idx, left, where)
+            right, rtype, rcols = encode_expr(idx, right, where)
             
             if (ltype == "STRING" or rtype == "STRING"):
                 exit("cannot perform arithematic operation on String type")
@@ -228,7 +235,7 @@ def encode_expr(idx, expr):
    
 
     if isinstance(expr, exp.Column):
-        global q1_alias_map, q2_alias_map, vars, schema 
+        global q1_alias_map, q2_alias_map, vars, schema
         if (idx == 1): 
             alias_map = q1_alias_map
         elif (idx == 2):
@@ -236,13 +243,15 @@ def encode_expr(idx, expr):
 
         table = alias_map[str(expr.table)]
         column = str(expr.this)
-        return vars[table][column], schema[table][column], [vars[table][f"{column}_is_null"]]
+        if not where:
+            return vars[table][column], schema[table][column], [vars[table][f"{column}_is_null"]]
+        else:
+            return vars[f"J{idx}_{table}_{column}"], schema[table][column], [vars[f"J{idx}_{table}_{column}_is_null"]]
     
     raise Exception(f"encode_expr: could not resolve {expr} in query{idx}")
 
 
 
-# todo
 # return left_table, right_table, join_type 
 def get_join_tables_and_type(ast, joins) :
     # when there's no join at all 
@@ -264,7 +273,6 @@ def get_join_tables_and_type(ast, joins) :
                 # Try to extract from nested structure
                 left_table_name = from_clause.args["this"].name if hasattr(from_clause.args["this"], 'name') else None
 
-
     if left_table_name is None:
         exit("Could not determine left table for join")
     
@@ -281,7 +289,31 @@ def get_join_tables_and_type(ast, joins) :
 
     # outer join 
     return left_table_name, right_table_name, join.side.upper()
-     
+
+
+# todo
+def allocate_join_result_vars(idx):
+    global vars
+
+    for table, columns in schema.items():
+        for col, type in columns.items():
+            # value variable for query idx
+            var_name = f"J{idx}_{table}_{col}"
+            if type == "INT":
+                val = Int(var_name)
+            elif type == "REAL":
+                val = Real(var_name)
+            else:
+                val = String(var_name)
+
+            # null flag variable for query idx
+            null_name = f"J{idx}_{table}_{col}_is_null"
+            is_null = Bool(null_name)
+
+            vars[f"J{idx}_{table}_{col}"] =  val
+            vars[f"J{idx}_{table}_{col}_is_null"] = is_null
+
+
 
 def encode_join(ast, idx):
     # pick which query (q1 or q2)
@@ -289,10 +321,12 @@ def encode_join(ast, idx):
         global q1_alias_map, q1_constraints, vars
         alias_map  = q1_alias_map
         constraints = q1_constraints
+        allocate_join_result_vars(idx=1)
     else:
         global q2_alias_map, q2_constraints, vars
         alias_map  = q2_alias_map
         constraints = q2_constraints
+        allocate_join_result_vars(idx=2)
 
     # produce NEW join booleans for this query
     q_match      = Bool(f"q{idx}_match")
@@ -331,28 +365,27 @@ def encode_join(ast, idx):
     if jtype == "CP":
         constraints += encode_cartisian_product(left_present, right_present,
                                                 q_match, q_right_null, q_left_null)
-        return jtype
+        # return jtype
+    else: 
+        # compute ON predicate
+        join = joins[0]
+        cond = join.args.get("on")
+        on_pred = encode_condition(cond, idx)
 
-    # compute ON predicate
-    join = joins[0]
-    cond = join.args.get("on")
-    on_pred = encode_condition(cond, idx)
-
-    # join type handlers
-    if jtype == "INNER":
-        constraints += encode_inner_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null)
-    elif jtype == "LEFT":
-        constraints += encode_left_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, right_table_name)
-    elif jtype == "RIGHT":
-        # constraints += encode_right_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, left_table_name)
-        constraints += encode_left_join(on_pred, right_present, left_present, q_match, q_right_null, q_left_null, left_table_name)
-    elif jtype == "FULL":
-        constraints += encode_full_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, left_table_name, right_table_name)
-    else:
-        raise ValueError(f"Unknown join type {jtype}")
-
-    # store newly created join variables into your global state if needed
-    # e.g., q1_join_vars = (q_match, q_right_null, q_left_null)
+        # join type handlers
+        if jtype == "INNER":
+            constraints += encode_inner_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null)
+        elif jtype == "LEFT":
+            constraints += encode_left_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, right_table_name)
+        elif jtype == "RIGHT":
+            # constraints += encode_right_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, left_table_name)
+            constraints += encode_left_join(on_pred, right_present, left_present, q_match, q_right_null, q_left_null, left_table_name)
+        elif jtype == "FULL":
+            constraints += encode_full_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, left_table_name, right_table_name)
+        else:
+            raise ValueError(f"Unknown join type {jtype}")
+    
+    constraints += encode_join_result(idx, left_real, right_real, jtype)
 
     return jtype
 
@@ -391,13 +424,60 @@ def encode_full_join(on_pred, left_present, right_present, q_match, q_right_null
         q_right_null == And(And(left_present, Not(on_pred)), right_cols_null),
         q_left_null == And(And(right_present, Not(on_pred)), left_cols_null),
     ]
+
+
 # # todo
-# def encode_full_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, left_table, right_table):
-#     return [
-#         q_match      == And(left_present, right_present, on_pred),
-#         q_right_null == And(left_present, Not(q_match)), 
-#         q_left_null  == And(right_present, Not(q_match)), 
-#     ]
+def encode_join_result(idx, left_table, right_table, join_type):
+    global vars, schema, q1_join_vars, q2_join_vars
+    if (idx == 1): 
+        match, left_null, right_null = q1_join_vars["match"], q1_join_vars["rnull"], q1_join_vars["lnull"]
+    else: 
+        match, left_null, right_null = q2_join_vars["match"], q2_join_vars["rnull"], q2_join_vars["lnull"]
+
+    constraints = []
+    def null_literal(type):
+        if type == "INT": return IntVal(0)
+        if type == "REAL": return RealVal(0)
+        return StringVal("")
+
+    for table, columns in schema.items():
+        for col, ctype in columns.items():
+            # for each attribute in the original table, read its variable and if it is (not) null
+            base_val   = vars[table][col]
+            base_is_null = vars[table][f"{col}_is_null"]
+
+            J_val  = vars[f"J{idx}_{table}_{col}"]
+            J_null = vars[f"J{idx}_{table}_{col}_is_null"]
+
+            null_val = null_literal(ctype)
+
+            if join_type == "INNER" or join_type == "CP":
+                use_base = match
+
+            elif join_type == "LEFT":
+                if table == left_table:
+                    use_base = Or(match, right_null)
+                else:
+                    use_base = match
+
+            elif join_type == "RIGHT":
+                if table == right_table:
+                    use_base = Or(match, left_null)
+                else:
+                    use_base = match
+
+            elif join_type == "FULL":
+                if table == left_table:
+                    use_base = Or(match, right_null)
+                else:
+                    use_base = Or(match, left_null)
+
+            # print(f"line477, for query{idx}, table_col = {table}_{col}, use_base = {use_base}")
+            constraints.append(J_val  == If(use_base, base_val,  null_val))
+            constraints.append(J_null == If(use_base, base_is_null, True))
+
+    return constraints
+
 
 
 def encode_cols_null(table):

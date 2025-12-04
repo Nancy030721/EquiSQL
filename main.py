@@ -165,8 +165,8 @@ def print_counterexample_z3(schema, model):
     if not q1_after_lnull.eq(q2_after_lnull):
         print(f"(LEFT NULL ROW) Q1: {q1_after_lnull}, Q2: {q2_after_lnull}")
 
-    print("\n----- Raw Model -----")
-    print(model)
+    # print("\n----- Raw Model -----")
+    # print(model)
 
     print("\n==========================================")
 

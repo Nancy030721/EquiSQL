@@ -26,7 +26,9 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "EQUIVALENT"),
     (["test/null/create-table3.sql", "test/null/null7.sql",  "test/null/null8.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
-    # (["test/null/create-table3.sql", "test/null/null11.sql",  "test/null/null12.sql"], "EQUIVALENT"), #new added
+    (["test/null/create-table3.sql", "test/null/null11.sql",  "test/null/null12.sql"], "EQUIVALENT"), #new added
+     (["test/null/create-table3.sql", "test/null/null13.sql",  "test/null/null14.sql"], "EQUIVALENT"), #new added
+   
 ]
 
 
