@@ -16,25 +16,25 @@ def main():
     print_assertion = False
     if len(sys.argv) >= 5:
         if sys.argv[4].lower() == "-cvc5":
-            solver_type = "cvc5" 
-        print_assertion = sys.argv[4].lower() == "-a" or (len(sys.argv) > 5 and sys.argv[5].lower() == "-a")  
+            solver_type = "cvc5"
+        print_assertion = sys.argv[4].lower() == "-a" or (len(sys.argv) > 5 and sys.argv[5].lower() == "-a")
 
     print(f"Running equivalence check using SMT solver: {solver_type.upper()}")
     run_equivalence_check(sys.argv[1], sys.argv[2], sys.argv[3], solver_type, False, print_assertion)
-    
+
 
 def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False, print_assertion=False):
     # start timing
     start = time.perf_counter()
 
-    # parse the create table queries to get schema 
+    # parse the create table queries to get schema
     global schema, null_funcs
     schema, not_null, primary_keys = parse_schema(schema_file) #e.g. Students: {'id': 'INT', 'name': 'STRING', 'age': 'INT'}
 
-    if not test: 
+    if not test:
         print(f"schema: {schema}") # for debug use
-        print(f"primary keys: {primary_keys}") # for debug use 
-        print(f"not null attributes: {not_null}") # for debug use 
+        print(f"primary keys: {primary_keys}") # for debug use
+        print(f"not null attributes: {not_null}") # for debug use
 
     # parse each query
     q1_ast = parse_query(q1_file)
@@ -47,19 +47,19 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
     # print("q1_alias_map =", q1_alias_map) # for debug use
     # print("q2_alias_map =", q2_alias_map) # for debug use
 
-    # perform some cheap checks over the queries 
+    # perform some cheap checks over the queries
     q1_col2tables, q2_col2tables = sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
 
     if solver_type == "z3":
         s = z3_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, not_null)
         result = s.check()
-        
+
         if test:
             if result == sat:
                 return f"counterexample: {s.check()}"
             return "EQUIVALENT"
-    
+
         end = time.perf_counter()
 
         if print_assertion:
@@ -68,7 +68,7 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
                 print("  ", simplify(a)) # for debug use
                 # print("  ", a) # for debug use
             print("]")
-        
+
 
         print(f"\nresult: {result}")
         if s.check() == sat :
@@ -78,13 +78,13 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
             print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
     else: #cvc5
-        s, variables_to_interpret  = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, not_null) 
+        s, variables_to_interpret  = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, not_null)
         result = s.checkSat()
         if test:
             if result.isSat():
                 return f"counterexample: {result}"
             return "EQUIVALENT"
-        
+
         end = time.perf_counter()
         if print_assertion:
             print(f"assertions:") # for debug use, improved readability
@@ -133,7 +133,7 @@ def print_ast(schema, q1_ast, q2_ast) :
 
 
 
-def print_counterexample_z3(schema, model): 
+def print_counterexample_z3(schema, model):
     valuation = {d.name(): model[d] for d in model.decls()}
 
     print("\n===== COUNTEREXAMPLE FOUND =====")
@@ -154,7 +154,7 @@ def print_counterexample_z3(schema, model):
 
     q1_after_lnull = valuation.get("q1_after_left_null", None)
     q2_after_lnull = valuation.get("q2_after_left_null", None)
-    
+
     print("\n----- Query Results Interpretation -----")
     if not q1_after_match.eq(q2_after_match):
         print(f"(MATCH ROW) Q1: {q1_after_match}, Q2: {q2_after_match}")
@@ -193,8 +193,8 @@ def print_counterexample_cvc5(schema, model_str):
     for table, cols in schema.items():
         row_terms = []
         for col, _ in cols.items():
-            q1_const_name = f"{table}_{'q1'}_{col}"  
-            q2_const_name = f"{table}_{'q2'}_{col}"  
+            q1_const_name = f"{table}_{'q1'}_{col}"
+            q2_const_name = f"{table}_{'q2'}_{col}"
             q1_const_val = values.get(q1_const_name)
             q2_const_val = values.get(q2_const_name)
             if q1_const_val != q2_const_val:
@@ -215,7 +215,7 @@ def print_counterexample_cvc5(schema, model_str):
     # # these branches should never be reached
     # elif q1 and q2:
     #     exit("  -> Both queries returned a row, what happened???")
-    # else: 
+    # else:
     #     exit("  -> Both queries returned nothing, what happened???")
 
 

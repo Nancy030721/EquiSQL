@@ -1,0 +1,1 @@
+SELECT COUNT(*) FROM Students WHERE age > 20

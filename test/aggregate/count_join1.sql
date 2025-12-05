@@ -1,0 +1,1 @@
+SELECT COUNT(*) FROM Students S INNER JOIN Takes T ON S.id = T.sid WHERE S.age > 18
