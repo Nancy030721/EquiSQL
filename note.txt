@@ -131,11 +131,8 @@ python main.py test/create-table.sql test/query1.sql test/query2.sql -cvc5
 
 
 
-..
-So the idea is: when we say q1_result is true, it’s really just a logical condition that’s been met in the logic of your encoding. 
-It’s not necessarily a direct guarantee that a row is returned. 
-It’s more like saying, “Under the current model, the conditions for Query 1 to produce a result are logically satisfied.” 
-It’s a kind of abstract indicator rather than a direct “yes, here’s a row” signal. And the same goes for q2_result.
-
-it's better to say 
-under some condition, query1 and query2 are going to take different paths or have different outcome  
+encode LIKE:
+hard part is to build a connection with all the other operations
+e.g. WHERE S.name = "ABC" AND S.name LIKE "A%"
+cannot just leave LIKE as an uninterpreted function 
+python main.py test/create-table.sql test/join/inner_join3.sql test/join/full_join4.sql -z3 
