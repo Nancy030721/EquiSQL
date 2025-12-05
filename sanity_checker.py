@@ -16,8 +16,6 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
             alias_map = q2_alias_map
         columns = []
         for expr in ast.expressions: 
-            # todo: why I didn't see DISTINCT ??? 
-            # print(f"line20, expr = {expr}")
             if expr.key == "column": 
                 col_name = expr.args.get("this")
                 if col_name:
@@ -35,16 +33,31 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
                 for table in alias_map.values() :
                     for col in schema[table]:
                         columns.append(col)
-                
+            
+            elif (expr.key == "count"): 
+                columns.append(str(expr).lower())
+
             else: # something else
-                exit("not supported")
+                exit(f"Expression type {expr.key} is not supported")
     
         return columns
+    
+    # for each query, build column --> tables map
+    def build_col2tables(alias_map, schema):
+        col2tables = {}
+        for _, table in alias_map.items():     # alias: 'S' -> table: 'Students'
+            for col in schema[table]:
+                col2tables.setdefault(col, []).append(table)
+        return col2tables
 
 
+    q1_col2tables = build_col2tables(q1_alias_map, schema)
+    q2_col2tables = build_col2tables(q2_alias_map, schema)
     q1_cols = extract_select_cols(q1_ast, 1)
     q2_cols = extract_select_cols(q2_ast, 2)
-    # print(q1_cols)
+
+    
+    # print(f"q1_cols = {q1_cols}")
     # print(q2_cols)
     
     if q1_cols != q2_cols: # same column names
@@ -61,18 +74,30 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
         detect_unsupported(ast, i)
 
         for col in ast.find_all(exp.Column):
-            if (i == 1) :
-                table = q1_alias_map[col.table]
-            else :
-                table = q2_alias_map[col.table]
-                
-            name = col.name
-            if table and table not in schema:
-                exit(f"Unknown table: {table}")
-            elif table and name not in schema[table]:
-                exit(f"Unknown column: {table}.{name}")
-            elif not table:
-                exit(f"Must specify the table for column {name}")
+            if not col.table: 
+                if i == 1 : 
+                    cols2tables = q1_col2tables
+                else :
+                    cols2tables = q2_col2tables
+
+                if col in cols2tables: 
+                    tables = cols2tables[col]
+                    if len(tables) == 0: 
+                        exit(f"Column {col} is not found in any table")
+                    elif len(tables) > 1:
+                        exit(f"Column {col} appeared more than once in table {tables}, must specify which table it refers to")
+                    # else: len(cols2tables[col]) > 1: doesn't do anything
+            else: 
+                if i == 1 :
+                    table = q1_alias_map[col.table]
+                else :
+                    table = q2_alias_map[col.table]
+                    
+                name = col.name
+                if table and table not in schema:
+                    exit(f"Unknown table: {table}")
+                elif table and name not in schema[table]:
+                    exit(f"Unknown column: {table}.{name}")
         
         i += 1
 
@@ -112,6 +137,9 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
         exit(err_message)
 
 
+    return q1_col2tables, q2_col2tables
+
+
 
 def detect_unsupported(ast, idx):
     unsupported = []
@@ -124,7 +152,7 @@ def detect_unsupported(ast, idx):
 
     # Aggregation functions
     for f in list(ast.find_all(exp.Func)):
-        if (f.key.lower() not in ["and", "or"]) :
+        if (f.key.lower() not in ["and", "or", "count"]) :
             unsupported.append("Aggregation functions")
 
     # UNION / INTERSECT / EXCEPT

@@ -1,4 +1,4 @@
-SELECT Students.name
-FROM Students
-JOIN Takes ON Takes.sid = Students.id
-OR Students.id >= 3
+SELECT S.name
+FROM Students S
+JOIN Takes ON Takes.sid = S.id
+OR id >= 3

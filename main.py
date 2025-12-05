@@ -48,11 +48,11 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
     # print("q2_alias_map =", q2_alias_map) # for debug use
 
     # perform some cheap checks over the queries 
-    sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
+    q1_col2tables, q2_col2tables = sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map)
 
 
     if solver_type == "z3":
-        s = z3_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys)
+        s = z3_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, not_null)
         result = s.check()
         
         if test:
@@ -78,7 +78,7 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
             print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
     else: #cvc5
-        s, variables_to_interpret  = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, not_null, primary_keys) 
+        s, variables_to_interpret  = cvc5_encoder.encode(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, not_null) 
         result = s.checkSat()
         if test:
             if result.isSat():
@@ -203,22 +203,20 @@ def print_counterexample_cvc5(schema, model_str):
 
         print(f"Table {table}: ({', '.join(row_terms)})")
 
-    q1 = values.get("q1_result").lower() == "true"
-    q2 = values.get("q2_result").lower() == "true"
-    
-    print(f"line180 in main.py, q1_result = {values.get('q1_result')}, q2_result = {values.get('q2_result')}")
+    # todo
+    # q1 = values.get("q1_result").lower() == "true"
+    # q2 = values.get("q2_result").lower() == "true"
 
-
-    print("\nInterpretation:")
-    if q1 and not q2:
-        print("  -> Query 1 returned a row, Query 2 did not.")
-    elif q2 and not q1:
-        print("  -> Query 2 returned a row, Query 1 did not.")
-    # these branches should never be reached
-    elif q1 and q2:
-        exit("  -> Both queries returned a row, what happened???")
-    else: 
-        exit("  -> Both queries returned nothing, what happened???")
+    # print("\nInterpretation:")
+    # if q1 and not q2:
+    #     print("  -> Query 1 returned a row, Query 2 did not.")
+    # elif q2 and not q1:
+    #     print("  -> Query 2 returned a row, Query 1 did not.")
+    # # these branches should never be reached
+    # elif q1 and q2:
+    #     exit("  -> Both queries returned a row, what happened???")
+    # else: 
+    #     exit("  -> Both queries returned nothing, what happened???")
 
 
 

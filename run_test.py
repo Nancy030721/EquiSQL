@@ -27,6 +27,11 @@ GENERAL_TESTS = [
     (["test/null/create-table3.sql", "test/null/null11.sql",  "test/null/null12.sql"], "EQUIVALENT"), #new added
      (["test/null/create-table3.sql", "test/null/null13.sql",  "test/null/null14.sql"], "EQUIVALENT"), #new added
    
+    # # tests on Aggregation
+    # # COUNT
+    # # python main.py test/aggregate/create-table.sql test/aggregate/count1.sql test/aggregate/count2.sql
+    # (["test/aggregate/create-table.sql", "test/aggregate/count1.sql", "test/aggregate/count2.sql"], "counterexample"), # count distinct attribute 1 VS count *
+    # (["test/aggregate/create-table.sql", "test/aggregate/count1.sql", "test/aggregate/count3.sql"], "EQUIVALENT"), # count distinct attribute 1 VS count *
 ]
 
 
@@ -41,6 +46,10 @@ def run_test(args, expected, solver):
         end = time.perf_counter()
     except Exception as e:
         print(f"Execution error: {e}")
+        if solver == "cvc5":
+            print(f"   command line: python main.py {args[0]} {args[1]} {args[2]} -cvc5")
+        else: 
+            print(f"   command line: python main.py {args[0]} {args[1]} {args[2]} -z3")
         return False, float('inf')
 
     if str(result).startswith(expected):

@@ -3,33 +3,35 @@ from sqlglot import expressions as exp
 from z3 import *
 
 
-def encode(sch, q1_ast, q2_ast, map1, map2, nn, pk):
+# workflow: from/join -> where(selection) -> select(projection)
+def encode(sch, q1_ast, q2_ast, map1, map2, c2t, c2t2, nn):
     # step 0: read inputs, define and initialize global variables
-    global s, q1_alias_map, q2_alias_map, q1_constraints, q2_constraints, vars, JOIN, schema, not_nulls
+    global s, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, q1_constraints, q2_constraints, vars, schema, not_nulls, COUNT
     
     s = Solver()
-    JOIN = Function('JOIN', IntSort(), IntSort(), BoolSort())
-    q1_alias_map, q2_alias_map, schema, not_nulls = map1, map2, sch, nn
+    q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, schema, not_nulls = map1, map2, c2t, c2t2, sch, nn
     q1_constraints, q2_constraints = [], []
+    COUNT = Function('COUNT', IntSort(), BoolSort()) 
+    # this function takes an int not_null, which takes 
+    # 0 --> when the attribute is not null, e.g. COUNT(primary key)
+    # 1 --> if there is no constraint on the attribute
+    # 2 --> if the attribute is null
     
     # step 1: declare variables
-    vars = declare_variables(schema)
-
-    # step 2: enforce that input tuples are the same 
-    # SKIPPED, now we are directly using the same set of variables 
+    vars = declare_variables()
     
-    # step 3: encode constraints for each query
+    # step 2: encode constraints for each query
     encode_query(q1_ast, idx=1)
     encode_query(q2_ast, idx=2)
     s.add(q1_constraints)
     s.add(q2_constraints)
 
-    # step 4:
+    # step 3:
     s.add(encode_diff())
-   
+    
     return s
 
-
+    
 def encode_diff() :
     global q1_where_vars, q2_where_vars
     return Or(
@@ -38,11 +40,10 @@ def encode_diff() :
         q1_where_vars["after_lnull"]  != q2_where_vars["after_lnull"],
     )
 
-
 # declare Z3 variables for all attributes in all tables
 # returns a map, which maps dict[table][column] -> Z3 variable
-def declare_variables(schema):  
-    global not_nulls
+def declare_variables():  
+    global not_nulls, schema
     variables = {}
     variables["present"] = {}
 
@@ -101,7 +102,6 @@ def encode_where(ast, idx, join_type):
             q_after_left_null  == False,
         ]
     else :
-        # print(f"line99, idx={idx}")
         # get the actual join variables created earlier
         q_match      = join_vars["match"]
         q_right_null = join_vars["rnull"]
@@ -160,11 +160,6 @@ def encode_condition(expr, idx, where=False):
     exit(f"Unsupported type: {key}")
 
 
-# def encode_pattern(idx, col, pattern, where=False) {
-#     # tidi
-#     col, _, col_is_null= encode_expr(idx, col, where)
-#     return And(Not(col_is_null), LIKE(col, pattern))
-# }
 
 def encode_comparison(idx, left, right, op, where):
     left, _, lcols = encode_expr(idx, left, where)
@@ -232,13 +227,7 @@ def encode_expr(idx, expr, where=False):
    
 
     if isinstance(expr, exp.Column):
-        global q1_alias_map, q2_alias_map, vars, schema
-        if (idx == 1): 
-            alias_map = q1_alias_map
-        elif (idx == 2):
-            alias_map = q2_alias_map
-
-        table = alias_map[str(expr.table)]
+        table = get_table(idx, expr)
         column = str(expr.this)
         if not where:
             return vars[table][column], schema[table][column], [vars[table][f"{column}_is_null"]]
@@ -248,6 +237,22 @@ def encode_expr(idx, expr, where=False):
     raise Exception(f"encode_expr: could not resolve {expr} in query{idx}")
 
 
+def get_table(idx, expr): # expr is guaranteed to be an instance of exp.Column
+    if expr.table:
+        global q1_alias_map, q2_alias_map
+        if (idx == 1): 
+            alias_map = q1_alias_map
+        elif (idx == 2):
+            alias_map = q2_alias_map
+        return alias_map[str(expr.table)]
+    else: 
+        global q1_col2tables, q2_col2tables
+        if (idx == 1): 
+            col2tables = q1_col2tables
+        elif (idx == 2):
+            col2tables = q2_col2tables
+        return col2tables[str(expr.this)][0]
+        
 
 # return left_table, right_table, join_type 
 def get_join_tables_and_type(ast, joins) :
@@ -403,7 +408,6 @@ def encode_inner_join(on_pred, left_present, right_present, q_match, q_right_nul
         q_left_null  == False,
     ]
     
-
 
 def encode_left_join(on_pred, left_present, right_present, q_match, q_right_null, q_left_null, right_table):
     return [
