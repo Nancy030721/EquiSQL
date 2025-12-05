@@ -49,6 +49,22 @@ def is_count_star(expr):
     return False
 
 
+def is_count_col(expr):
+    """
+    Detects COUNT(col) where col is a column reference.
+    Does NOT match COUNT(*) or COUNT(<expr>) for now.
+    """
+    # Pattern: Count(this=Column)
+    if isinstance(expr, exp.Count):
+        return isinstance(expr.this, exp.Column)
+    # Pattern: Anonymous function: count(col)
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "count":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Column)
+    return False
+
+
 def encode_diff():
     global q1_where_vars, q2_where_vars, q1_agg_output, q2_agg_output, q1_select_out, q2_select_out
 
@@ -215,6 +231,46 @@ def encode_select(ast, idx):
 
             continue
         # --- END COUNT(*) ---
+
+        # --- COUNT(col) ---
+        if is_count_col(expr):
+            # Determine which query's where-vars to use
+            if idx == 1:
+                am = q1_where_vars["after_match"]
+                rn = q1_where_vars["after_rnull"]
+                ln = q1_where_vars["after_lnull"]
+            else:
+                am = q2_where_vars["after_match"]
+                rn = q2_where_vars["after_rnull"]
+                ln = q2_where_vars["after_lnull"]
+
+            row_exists = Or(am, rn, ln)
+
+            # Extract the column expression
+            if isinstance(expr, exp.Count):
+                col_expr = expr.this
+            else:
+                col_expr = expr.expressions[0]
+
+            # Use encode_expr to get the joined (post-WHERE) value + null flag
+            _, _, nulls = encode_expr(idx, col_expr, where=True)
+            if len(nulls) == 0:
+                col_is_null = BoolVal(False)
+            else:
+                col_is_null = Or(*nulls)
+
+            count_val = Int(f"q{idx}_count_col_result")
+
+            # COUNT(col) counts only NOT NULL values
+            s.add(count_val == If(And(row_exists, Not(col_is_null)), 1, 0))
+
+            if idx == 1:
+                q1_agg_output = count_val
+            else:
+                q2_agg_output = count_val
+
+            continue
+        # --- END COUNT(col) ---
 
         # Handle STAR (expand all columns)
         if isinstance(expr, exp.Star):
