@@ -9,14 +9,23 @@ from z3 import *
 # 2.they reference existing tables/columns
 # 3.they reference the same set of tables
 def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
+    def normalize_aggregate(expr_str, alias_map):
+        """Normalize aggregate expressions like SUM(S.age) -> SUM(age)"""
+        expr_lower = expr_str.lower()
+        # Handle patterns like sum(table.col) -> sum(col)
+        for alias, table in alias_map.items():
+            expr_lower = expr_lower.replace(f"{alias.lower()}.", "")
+            expr_lower = expr_lower.replace(f"{table.lower()}.", "")
+        return expr_lower
+
     def extract_select_cols(ast, idx):
         if (idx == 1):
             alias_map = q1_alias_map
         else :
             alias_map = q2_alias_map
         columns = []
-        for expr in ast.expressions: 
-            if expr.key == "column": 
+        for expr in ast.expressions:
+            if expr.key == "column":
                 col_name = expr.args.get("this")
                 if col_name:
                     columns.append(str(col_name))
@@ -28,20 +37,29 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
                     columns.append(str(alias_id))
                 else:
                     columns.append(str(inner_expr))
-                
+
             elif (expr.key== "star") :
                 for table in alias_map.values() :
                     for col in schema[table]:
                         columns.append(col)
-            
-            elif (expr.key == "count"): 
-                columns.append(str(expr).lower())
+
+            elif (expr.key == "count"):
+                normalized = normalize_aggregate(str(expr), alias_map)
+                columns.append(normalized)
+
+            elif (expr.key == "sum"):
+                normalized = normalize_aggregate(str(expr), alias_map)
+                columns.append(normalized)
+
+            elif (expr.key == "avg"):
+                normalized = normalize_aggregate(str(expr), alias_map)
+                columns.append(normalized)
 
             else: # something else
                 exit(f"Expression type {expr.key} is not supported")
-    
+
         return columns
-    
+
     # for each query, build column --> tables map
     def build_col2tables(alias_map, schema):
         col2tables = {}
@@ -56,10 +74,10 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
     q1_cols = extract_select_cols(q1_ast, 1)
     q2_cols = extract_select_cols(q2_ast, 2)
 
-    
+
     # print(f"q1_cols = {q1_cols}")
     # print(q2_cols)
-    
+
     if q1_cols != q2_cols: # same column names
         err_message = (
             f"Queries returns different columns: Query1: {q1_cols} "
@@ -70,35 +88,35 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
     # check column exist in schema
     i = 1
     for ast in [q1_ast, q2_ast]:
-        # detech if queries contain operations that are not supported by our verifier 
+        # detech if queries contain operations that are not supported by our verifier
         detect_unsupported(ast, i)
 
         for col in ast.find_all(exp.Column):
-            if not col.table: 
-                if i == 1 : 
+            if not col.table:
+                if i == 1 :
                     cols2tables = q1_col2tables
                 else :
                     cols2tables = q2_col2tables
 
-                if col in cols2tables: 
+                if col in cols2tables:
                     tables = cols2tables[col]
-                    if len(tables) == 0: 
+                    if len(tables) == 0:
                         exit(f"Column {col} is not found in any table")
                     elif len(tables) > 1:
                         exit(f"Column {col} appeared more than once in table {tables}, must specify which table it refers to")
                     # else: len(cols2tables[col]) > 1: doesn't do anything
-            else: 
+            else:
                 if i == 1 :
                     table = q1_alias_map[col.table]
                 else :
                     table = q2_alias_map[col.table]
-                    
+
                 name = col.name
                 if table and table not in schema:
                     exit(f"Unknown table: {table}")
                 elif table and name not in schema[table]:
                     exit(f"Unknown column: {table}.{name}")
-        
+
         i += 1
 
     if set(q1_alias_map.values()) != set(q2_alias_map.values()): #order doesn't matter
@@ -106,11 +124,11 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
             f"Queries do not reference the same set of tables: Query1: {q1_alias_map.values()} vs Query 2: {q2_alias_map.values()}."
         )
         exit(err_message)
-    
-    if len(q1_alias_map.values()) > 2: 
+
+    if len(q1_alias_map.values()) > 2:
         exit("Only support equivalence check on at most two relations.")
 
-    
+
     # check if LIMIT and OFFSET matches
     q1_offset, q1_limit, q2_offset, q2_limit = 0, 0, 0, 0
     if list(q1_ast.find_all(exp.Limit)):
@@ -123,7 +141,7 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
         q1_offset = list(q1_ast.find_all(exp.Offset))[0]
     if list(q2_ast.find_all(exp.Offset)):
         q2_offset = list(q2_ast.find_all(exp.Offset))[0]
-    
+
     if (q1_offset != q2_offset):
         err_message = (
             f"query1 skips the first {q1_offset} rows from the beginning of the result set, "
@@ -152,7 +170,7 @@ def detect_unsupported(ast, idx):
 
     # Aggregation functions
     for f in list(ast.find_all(exp.Func)):
-        if (f.key.lower() not in ["and", "or", "count"]) :
+        if (f.key.lower() not in ["and", "or", "count", "sum", "avg"]) :
             unsupported.append("Aggregation functions")
 
     # UNION / INTERSECT / EXCEPT
@@ -167,7 +185,7 @@ def detect_unsupported(ast, idx):
     if list(ast.find_all(exp.Order)):
         unsupported.append("ORDER BY")
 
-    if len(unsupported) > 0: 
+    if len(unsupported) > 0:
         exit(f"query {idx} contains operations that are not supported -- {unsupported}")
 
 

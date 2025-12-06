@@ -65,6 +65,68 @@ def is_count_col(expr):
     return False
 
 
+def is_sum_col(expr):
+    """
+    Detects SUM(col) where col is a direct column reference.
+    Does NOT handle SUM(*) or SUM(expr) yet.
+    """
+    if isinstance(expr, exp.Sum):
+        return isinstance(expr.this, exp.Column)
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "sum":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Column)
+    return False
+
+
+def is_avg_col(expr):
+    """
+    Detects AVG(col) where col is a direct column reference.
+    Does NOT handle AVG(*) or AVG(expr) yet.
+    """
+    if isinstance(expr, exp.Avg):
+        return isinstance(expr.this, exp.Column)
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "avg":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Column)
+    return False
+
+
+def extract_aggregate_column(expr):
+    """
+    Extracts the column expression from aggregate functions like COUNT(col), SUM(col), AVG(col).
+    Works with both native sqlglot expressions and Anonymous function calls.
+    """
+    if isinstance(expr, (exp.Count, exp.Sum, exp.Avg)):
+        return expr.this
+    if isinstance(expr, exp.Anonymous):
+        args = expr.expressions or []
+        if len(args) == 1:
+            return args[0]
+    return None
+
+
+def get_row_existence_condition(idx, where_vars):
+    """
+    Returns a Z3 expression representing whether a row exists after WHERE clause.
+    A row exists if it's in any of: after_match, after_rnull, or after_lnull.
+    """
+    return Or(
+        where_vars["after_match"],
+        where_vars["after_rnull"],
+        where_vars["after_lnull"]
+    )
+
+
+def get_where_vars(idx):
+    """
+    Returns the appropriate where_vars dictionary for the given query index.
+    """
+    global q1_where_vars, q2_where_vars
+    return q1_where_vars if idx == 1 else q2_where_vars
+
+
 def encode_diff():
     global q1_where_vars, q2_where_vars, q1_agg_output, q2_agg_output, q1_select_out, q2_select_out
 
@@ -74,13 +136,21 @@ def encode_diff():
         q1_where_vars["after_lnull"]  != q2_where_vars["after_lnull"],
     ]
 
-    # Compare COUNT(*) aggregate
+    # Compare aggregate output (COUNT, SUM, AVG, etc.)
     if q1_agg_output is not None or q2_agg_output is not None:
-        # If only one query has COUNT(*) → difference
+        # One query has an aggregate and the other doesn't → difference
         if q1_agg_output is None or q2_agg_output is None:
-            diffs.append(BoolVal(True))
-        else:
-            diffs.append(q1_agg_output != q2_agg_output)
+            return Or(*diffs, BoolVal(True))
+
+        # Handle AVG case (pair output: numerator and denominator)
+        if isinstance(q1_agg_output, tuple) and isinstance(q2_agg_output, tuple):
+            num1, den1 = q1_agg_output
+            num2, den2 = q2_agg_output
+            diffs.append(Or(num1 != num2, den1 != den2))
+            return Or(*diffs)
+
+        # Regular (single integer) aggregate (COUNT, SUM)
+        diffs.append(q1_agg_output != q2_agg_output)
         return Or(*diffs)
 
     # If no aggregates, compare projected columns (if any)
@@ -208,17 +278,8 @@ def encode_select(ast, idx):
 
         # --- COUNT(*) AGGREGATE ---
         if is_count_star(expr):
-            # Row existence: any output row implies count = 1
-            if idx == 1:
-                am = q1_where_vars["after_match"]
-                rn = q1_where_vars["after_rnull"]
-                ln = q1_where_vars["after_lnull"]
-            else:
-                am = q2_where_vars["after_match"]
-                rn = q2_where_vars["after_rnull"]
-                ln = q2_where_vars["after_lnull"]
-
-            row_exists = Or(am, rn, ln)
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
             count_val = Int(f"q{idx}_count_star_result")
 
             # count = 1 if row exists, else 0
@@ -234,30 +295,15 @@ def encode_select(ast, idx):
 
         # --- COUNT(col) ---
         if is_count_col(expr):
-            # Determine which query's where-vars to use
-            if idx == 1:
-                am = q1_where_vars["after_match"]
-                rn = q1_where_vars["after_rnull"]
-                ln = q1_where_vars["after_lnull"]
-            else:
-                am = q2_where_vars["after_match"]
-                rn = q2_where_vars["after_rnull"]
-                ln = q2_where_vars["after_lnull"]
-
-            row_exists = Or(am, rn, ln)
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
 
             # Extract the column expression
-            if isinstance(expr, exp.Count):
-                col_expr = expr.this
-            else:
-                col_expr = expr.expressions[0]
+            col_expr = extract_aggregate_column(expr)
 
             # Use encode_expr to get the joined (post-WHERE) value + null flag
             _, _, nulls = encode_expr(idx, col_expr, where=True)
-            if len(nulls) == 0:
-                col_is_null = BoolVal(False)
-            else:
-                col_is_null = Or(*nulls)
+            col_is_null = Or(*nulls) if nulls else BoolVal(False)
 
             count_val = Int(f"q{idx}_count_col_result")
 
@@ -271,6 +317,62 @@ def encode_select(ast, idx):
 
             continue
         # --- END COUNT(col) ---
+
+        # --- SUM(col) ---
+        if is_sum_col(expr):
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
+
+            # Get the column expression
+            col_expr = extract_aggregate_column(expr)
+
+            # Use encode_expr to get column value + null flag
+            col_val, _, nulls = encode_expr(idx, col_expr, where=True)
+            col_is_null = Or(*nulls) if nulls else BoolVal(False)
+
+            # SUM(col) = col_val IF row exists AND col is non-null, else 0
+            sum_val = Int(f"q{idx}_sum_col_result")
+            s.add(sum_val == If(And(row_exists, Not(col_is_null)), col_val, 0))
+
+            # store as the aggregate output (same mechanism as COUNT)
+            if idx == 1:
+                q1_agg_output = sum_val
+            else:
+                q2_agg_output = sum_val
+
+            continue
+        # --- END SUM(col) ---
+
+        # --- AVG(col) ---
+        if is_avg_col(expr):
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
+
+            # Extract the column expression
+            col_expr = extract_aggregate_column(expr)
+
+            # Encode the column value, type, and nulls
+            col_val, _, nulls = encode_expr(idx, col_expr, where=True)
+            col_is_null = Or(*nulls) if nulls else BoolVal(False)
+
+            # Create numerator and denominator variables
+            avg_num = Int(f"q{idx}_avg_num")
+            avg_den = Int(f"q{idx}_avg_den")
+
+            # AVG semantics:
+            # numerator = SUM(col) over non-null values
+            # denominator = COUNT(col) over non-null values
+            s.add(avg_num == If(And(row_exists, Not(col_is_null)), col_val, 0))
+            s.add(avg_den == If(And(row_exists, Not(col_is_null)), 1, 0))
+
+            # Store as aggregate output as a tuple-like structure
+            if idx == 1:
+                q1_agg_output = (avg_num, avg_den)
+            else:
+                q2_agg_output = (avg_num, avg_den)
+
+            continue
+        # --- END AVG(col) ---
 
         # Handle STAR (expand all columns)
         if isinstance(expr, exp.Star):

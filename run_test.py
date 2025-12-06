@@ -8,16 +8,16 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/query1.sql", "test/query2.sql"], "counterexample"),
     (["test/create-table2.sql", "test/query3.sql", "test/query4.sql"], "EQUIVALENT"),
     # python main.py test/create-table2.sql test/query3.sql test/query4.sql -z3
-   
+
     # tests on joins
     # python main.py test/create-table.sql test/join/inner_join.sql test/join/inner_join2.sql -z3
     (["test/create-table.sql", "test/join/inner_join.sql", "test/join/inner_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/left_join.sql", "test/join/left_join2.sql"], "counterexample"),
-    (["test/create-table.sql", "test/join/left_join2.sql", "test/join/cartisian_product.sql"], "counterexample"), 
+    (["test/create-table.sql", "test/join/left_join2.sql", "test/join/cartisian_product.sql"], "counterexample"),
     (["test/create-table.sql", "test/join/left_join3.sql", "test/join/right_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/full_join.sql",  "test/join/full_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join3.sql"], "EQUIVALENT"),
-    
+
 
     # tests on NULL and NOT NULL
     (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
@@ -26,12 +26,25 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/null/null9.sql",  "test/null/null10.sql"], "counterexample"),
     (["test/null/create-table3.sql", "test/null/null11.sql",  "test/null/null12.sql"], "EQUIVALENT"), #new added
      (["test/null/create-table3.sql", "test/null/null13.sql",  "test/null/null14.sql"], "EQUIVALENT"), #new added
-   
-    # # tests on Aggregation
-    # # COUNT
-    # # python main.py test/aggregate/create-table.sql test/aggregate/count1.sql test/aggregate/count2.sql
-    # (["test/aggregate/create-table.sql", "test/aggregate/count1.sql", "test/aggregate/count2.sql"], "counterexample"), # count distinct attribute 1 VS count *
-    # (["test/aggregate/create-table.sql", "test/aggregate/count1.sql", "test/aggregate/count3.sql"], "EQUIVALENT"), # count distinct attribute 1 VS count *
+
+    # tests on Aggregation - COUNT
+    (["test/create-table.sql", "test/aggregate/count/count_test1.sql", "test/aggregate/count/count_test2.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/aggregate/count/count_diff1.sql", "test/aggregate/count/count_diff2.sql"], "counterexample"),
+    (["test/create-table.sql", "test/aggregate/count/count_join1.sql", "test/aggregate/count/count_join2.sql"], "EQUIVALENT"),
+    # Note: count_col_join tests skipped - they compare different columns (sid vs id)
+
+    # tests on Aggregation - SUM
+    # Basic equivalence tests
+    (["test/create-table.sql", "test/aggregate/sum/sum_col1a.sql", "test/aggregate/sum/sum_col1b.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/aggregate/sum/sum_col2a.sql", "test/aggregate/sum/sum_col2b.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/aggregate/sum/sum_real1a.sql", "test/aggregate/sum/sum_real1b.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/aggregate/sum/sum_where1a.sql", "test/aggregate/sum/sum_where1b.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/aggregate/sum/sum_join1.sql", "test/aggregate/sum/sum_join2.sql"], "EQUIVALENT"),
+    # Non-equivalence tests
+    (["test/create-table.sql", "test/aggregate/sum/sum_diff1.sql", "test/aggregate/sum/sum_diff2.sql"], "counterexample"),
+    # Note: sum_null tests skipped - WHERE age IS NOT NULL filters rows differently than no WHERE
+    # Note: sum_left_join tests skipped - they compare different columns (sid vs id)
+    # Note: sum_vs_count test skipped - sanity checker rejects different aggregate types
 ]
 
 
@@ -48,7 +61,7 @@ def run_test(args, expected, solver):
         print(f"Execution error: {e}")
         if solver == "cvc5":
             print(f"   command line: python main.py {args[0]} {args[1]} {args[2]} -cvc5")
-        else: 
+        else:
             print(f"   command line: python main.py {args[0]} {args[1]} {args[2]} -z3")
         return False, float('inf')
 
@@ -61,10 +74,10 @@ def run_test(args, expected, solver):
         print(f"   Output was: {result}")
         if solver == "cvc5":
             print(f"   command line: python main.py {args[0]} {args[1]} {args[2]} -cvc5")
-        else: 
+        else:
             print(f"   command line: python main.py {args[0]} {args[1]} {args[2]} -z3")
         return False, float('inf')
-    
+
 
 if __name__ == "__main__":
 
@@ -77,18 +90,18 @@ if __name__ == "__main__":
 
     if solver_type == "z3":
         test_num = len(GENERAL_TESTS) + len(Z3_TESTS)
-        for args, expected in GENERAL_TESTS + Z3_TESTS: 
+        for args, expected in GENERAL_TESTS + Z3_TESTS:
             result, t = run_test(args, expected, "z3")
-            if result: 
-                passed += 1 
+            if result:
+                passed += 1
                 passed_time += t
-    
+
     if solver_type == "cvc5":
         test_num = len(GENERAL_TESTS)
-        for args, expected in GENERAL_TESTS: 
+        for args, expected in GENERAL_TESTS:
             result, t = run_test(args, expected, "cvc5")
-            if result: 
-                passed += 1 
+            if result:
+                passed += 1
                 passed_time += t
 
 
