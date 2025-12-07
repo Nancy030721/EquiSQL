@@ -262,7 +262,7 @@ def encode_select(ast, idx):
     Encodes the SELECT clause, handling COUNT(*) aggregates and regular projections.
     """
     global q1_select_out, q2_select_out, q1_agg_output, q2_agg_output
-    global q1_where_vars, q2_where_vars, s, vars, schema
+    global q1_where_vars, q2_where_vars, s, vars, schema, q1_alias_map, q2_alias_map
 
     select_exprs = ast.args.get("expressions")
     outputs = []
@@ -376,10 +376,14 @@ def encode_select(ast, idx):
 
         # Handle STAR (expand all columns)
         if isinstance(expr, exp.Star):
-            for table in schema:
-                for col in schema[table]:
-                    v = vars[f"J{idx}_{table}_{col}"]
-                    n = vars[f"J{idx}_{table}_{col}_is_null"]
+            if idx == 1:
+                alias_map = q1_alias_map
+            else: 
+                alias_map = q2_alias_map
+            for aliased_table_name, real_table_name in alias_map.items():
+                for col in schema[real_table_name]:
+                    v = vars[f"J{idx}_{real_table_name}_{col}"]
+                    n = vars[f"J{idx}_{real_table_name}_{col}_is_null"]
                     outputs.append((v, n))
             continue
 
@@ -417,10 +421,6 @@ def encode_condition(expr, idx, where=False):
         elif key == "is":
             _, _, col_is_null = encode_expr(idx, expr.this, where)
             return col_is_null[0]
-        # elif key == "like":
-        #     print(expr.this)
-        #     print(expr.expression)
-        #     print("tidi")
     exit(f"Unsupported type: {key}")
 
 
