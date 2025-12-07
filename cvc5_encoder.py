@@ -35,9 +35,17 @@ def encode(sch, q1_ast, q2_ast, map1, map2, c2t, c2t2, nn):
 
 def extract_values(nested):
     variables_to_interpret = set()
-    # for block in nested:
-    #     for _, term in block.items():
-    #         variables_to_interpret.add(term)
+    for block in nested:
+        if isinstance(block, dict):
+            for _, term in block.items():
+                variables_to_interpret.add(term)
+        else: 
+            symbol = block.getSymbol()
+            if (symbol.startswith("q1_") or symbol.startswith("q2_")) and symbol.endswith("_result"):
+                variables_to_interpret.add(block)
+            elif symbol in ["q1_after_match", "q2_after_match", "q1_after_right_null", 
+                          "q2_after_right_null", "q1_after_left_null",  "q2_after_left_null"]:
+                variables_to_interpret.add(block)
     return variables_to_interpret
 
 def encode_diff():
@@ -253,7 +261,6 @@ def encode_select(ast, idx):
 
             # Get the column expression
             col_expr = extract_aggregate_column(expr)
-            print(f"line 257, aggregate column is {col_expr}") # expect to see id
 
             # Use encode_expr to get column value + null flag
             col_val, col_type, nulls = encode_expr(idx, col_expr, where=True)

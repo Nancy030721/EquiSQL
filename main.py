@@ -4,6 +4,7 @@ from parser import parse_schema, parse_query
 from sanity_checker import sanity_check
 import z3_encoder
 from z3 import *
+from z3 import is_string_value
 import cvc5_encoder
 from cvc5 import *
 import time
@@ -73,7 +74,7 @@ def run_equivalence_check(schema_file, q1_file, q2_file, solver_type, test=False
         print(f"\nresult: {result}")
         if s.check() == sat :
             # print(s.model())
-            print_counterexample_z3(schema, s.model())
+            print_counterexample_z3(schema, s.model(), q1_alias_map, q2_alias_map)
         else :
             print(f"Query 1 and 2 are equivalent, runtime: {end-start:.5f}s")
 
@@ -133,42 +134,94 @@ def print_ast(schema, q1_ast, q2_ast) :
 
 
 
-def print_counterexample_z3(schema, model):
+
+
+
+def z3_value(v):
+    if v is None:
+        return None
+
+    if is_true(v) or is_false(v):
+        return bool(is_true(v))
+
+    if v.sort().kind() == Z3_INT_SORT:
+        return v.as_long()
+
+    if v.sort().kind() == Z3_REAL_SORT:
+        # convert real to float safely
+        return float(v.as_decimal(10).replace("?", ""))
+
+    if is_string_value(v):
+        return v.as_string()
+
+    return str(v)
+
+def make_var(name, table, col, schema):
+    typ = schema[table][col]
+
+    if "_is_null" in name:
+        return Bool(name)
+
+    if typ == "INT":
+        return Int(name)
+    elif typ == "REAL":
+        return Real(name)
+    else:
+        return String(name)
+    
+
+def extract_projection_from_model(model, prefix):
+    result = {}
+    for d in model.decls():
+        name = d.name()
+        if name.startswith(prefix) and name.endswith("_result"):
+            result[name] = model[d]
+    return result
+
+
+def print_counterexample_z3(schema, model, q1_alias_map, q2_alias_map):
     valuation = {d.name(): model[d] for d in model.decls()}
 
     print("\n===== COUNTEREXAMPLE FOUND =====")
 
-    # Print the base tables
+    # Base table rows (input tuples)
     print("\n----- Base Table Rows -----")
-    for table, attributes in schema.items():
-        row_data = {attr: valuation.get(f"{table}_{attr}", 'NULL')
-                    for attr in attributes}
-        print(f"{table}: {row_data}")
+    for _, table in q1_alias_map.items():
+        row = {}
+        for col in schema[table]:
+            name = f"{table}_{col}"
+            row[col] = z3_value(valuation.get(name))
+        print(f"{table}: {row}")
 
-    # Show the query results and interpret them
-    q1_after_match = valuation.get("q1_after_match", None)
-    q2_after_match = valuation.get("q2_after_match", None)
+    # WHERE / JOIN survival flags
+    flags = {}
+    for name in [
+        "q1_after_match", "q2_after_match",
+        "q1_after_right_null", "q2_after_right_null",
+        "q1_after_left_null",  "q2_after_left_null"
+    ]:
+        flags[name] = z3_value(valuation.get(name))
 
-    q1_after_rnull = valuation.get("q1_after_right_null", None)
-    q2_after_rnull = valuation.get("q2_after_right_null", None)
+    print("\n----- Row Survival Flags -----")
+    for k, v in flags.items():
+        print(f"{k}: {v}")
 
-    q1_after_lnull = valuation.get("q1_after_left_null", None)
-    q2_after_lnull = valuation.get("q2_after_left_null", None)
+   
+    # Final projected rows (JOIN RESULT → SELECT)
+    print("\n----- Final Projected Output -----")
 
-    print("\n----- Query Results Interpretation -----")
-    if not q1_after_match.eq(q2_after_match):
-        print(f"(MATCH ROW) Q1: {q1_after_match}, Q2: {q2_after_match}")
+    q1_proj = extract_projection_from_model(model, "q1_")
+    q2_proj = extract_projection_from_model(model, "q2_")
 
-    if not q1_after_rnull.eq(q2_after_rnull):
-        print(f"(RIGHT NULL ROW) Q1: {q1_after_rnull}, Q2: {q2_after_rnull}")
+    print("Q1:", q1_proj)
+    print("Q2:", q2_proj)
 
-    if not q1_after_lnull.eq(q2_after_lnull):
-        print(f"(LEFT NULL ROW) Q1: {q1_after_lnull}, Q2: {q2_after_lnull}")
-
+    # # Raw model dump
     print("\n----- Raw Model -----")
     print(model)
 
-    print("\n==========================================")
+    print("\n==========================================\n")
+
 
 
 def get_bool(m, name):
@@ -193,13 +246,9 @@ def print_counterexample_cvc5(schema, model_str):
     for table, cols in schema.items():
         row_terms = []
         for col, _ in cols.items():
-            q1_const_name = f"{table}_{'q1'}_{col}"
-            q2_const_name = f"{table}_{'q2'}_{col}"
-            q1_const_val = values.get(q1_const_name)
-            q2_const_val = values.get(q2_const_name)
-            if q1_const_val != q2_const_val:
-                exit("Query 1 and 2 takes different input, this should never happen")
-            row_terms.append(f"{col.lower()}={q1_const_val}")
+            const_name = f"{table}_{col}"
+            const_val = values.get(const_name)
+            row_terms.append(f"{col.lower()}={const_val}")
 
         print(f"Table {table}: ({', '.join(row_terms)})")
 

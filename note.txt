@@ -1,0 +1,7 @@
+use this command to help implement print_counterexample for models from each encoder: 
+
+python main.py test/create-table.sql test/aggregate/sum/sum_left_join1a.sql test/aggregate/sum/sum_left_join1b.sql   
+
+
+python main.py test/create-table.sql test/aggregate/sum/sum_left_join1a.sql test/aggregate/sum/sum_left_join1b.sql -cvc5
+

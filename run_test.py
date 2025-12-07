@@ -18,7 +18,6 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/join/full_join.sql",  "test/join/full_join2.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/join/inner_join3.sql", "test/join/full_join3.sql"], "EQUIVALENT"),
 
-
     # tests on NULL and NOT NULL
     (["test/create-table.sql", "test/null/null3.sql", "test/null/null4.sql"], "EQUIVALENT"),
     (["test/create-table.sql", "test/null/null5.sql", "test/null/null6.sql"], "counterexample"),
@@ -46,9 +45,18 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/aggregate/sum/sum_join1.sql", "test/aggregate/sum/sum_join2.sql"], "EQUIVALENT"),
     # Non-equivalence tests
     (["test/create-table.sql", "test/aggregate/sum/sum_diff1.sql", "test/aggregate/sum/sum_diff2.sql"], "counterexample"),
-    # Note: sum_null tests skipped - WHERE age IS NOT NULL filters rows differently than no WHERE
-    # Note: sum_left_join tests skipped - they compare different columns (sid vs id)
-    # Note: sum_vs_count test skipped - sanity checker rejects different aggregate types
+
+    # All these tests run after making some small changes to them. The sanity checker used to reject them for two reasons:
+    # 1.it checks output schema match, so "COUNT(id)" and "COUNT(sid)" would not match, but "COUNT(id) as cnt" and "COUNT(sid) as cnt" is fine. 
+    #   -- fix: this is the desired behavior, so I added output attribute aliasing in those test cases
+    # 2.we convert COUNT, SUM, AVG into different strings, so the sanity checker would reject when see "SUM" VS "AVG"
+    #   -- fix: for those with attribute aliasing, if their name match, skip and simply pass that to the encoder
+    #           if their name doesn't match, reject 
+    #.          for those without attribute aliasing, directly convert them into string and compare
+    (["test/create-table.sql", "test/aggregate/sum/sum_null1.sql", "test/aggregate/sum/sum_null2.sql"], "counterexample"),
+    (["test/null/create-table3.sql", "test/aggregate/sum/sum_null3a.sql", "test/aggregate/sum/sum_null3b.sql"], "EQUIVALENT"),
+    (["test/create-table.sql", "test/aggregate/sum/sum_left_join1a.sql", "test/aggregate/sum/sum_left_join1b.sql"], "counterexample"),
+    (["test/create-table.sql", "test/aggregate/count/count_col2b.sql", "test/aggregate/sum/sum_vs_count.sql"], "counterexample"),
 ]
 
 
