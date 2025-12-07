@@ -64,5 +64,3 @@ python main.py test/create-table.sql test/query1.sql test/query2.sql -cvc5
 ```bash
 python run_test.py -cvc5
 ```
-
-For more details on ongoing process, check note.txt

@@ -18,6 +18,35 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
             expr_lower = expr_lower.replace(f"{table.lower()}.", "")
         return expr_lower
 
+    def add_expr_to_column(expr, columns, alias_map):
+        if expr.key == "column":
+            col_name = expr.args.get("this")
+            if col_name:
+                columns.append(str(col_name))
+
+        elif expr.key == "alias":
+            alias_id = expr.args.get("alias")
+            inner_expr = expr.args.get("this")
+            if alias_id:
+                columns.append(str(alias_id))
+            else:
+                add_expr_to_column(inner_expr, columns)
+
+        elif (expr.key== "star") :
+            for table in alias_map.values() :
+                for col in schema[table]:
+                    columns.append(col)
+
+        elif (expr.key in ["count", "sum", "avg"]):
+            col_name = expr.args.get("this")
+            normalized = normalize_aggregate(str(col_name), alias_map)
+            columns.append(normalized)
+
+        else: # something else
+            exit(f"Expression type {expr.key} is not supported")
+
+
+
     def extract_select_cols(ast, idx):
         if (idx == 1):
             alias_map = q1_alias_map
@@ -25,38 +54,7 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
             alias_map = q2_alias_map
         columns = []
         for expr in ast.expressions:
-            if expr.key == "column":
-                col_name = expr.args.get("this")
-                if col_name:
-                    columns.append(str(col_name))
-
-            elif expr.key == "alias":
-                alias_id = expr.args.get("alias")
-                inner_expr = expr.args.get("this")
-                if alias_id:
-                    columns.append(str(alias_id))
-                else:
-                    columns.append(str(inner_expr))
-
-            elif (expr.key== "star") :
-                for table in alias_map.values() :
-                    for col in schema[table]:
-                        columns.append(col)
-
-            elif (expr.key == "count"):
-                normalized = normalize_aggregate(str(expr), alias_map)
-                columns.append(normalized)
-
-            elif (expr.key == "sum"):
-                normalized = normalize_aggregate(str(expr), alias_map)
-                columns.append(normalized)
-
-            elif (expr.key == "avg"):
-                normalized = normalize_aggregate(str(expr), alias_map)
-                columns.append(normalized)
-
-            else: # something else
-                exit(f"Expression type {expr.key} is not supported")
+            add_expr_to_column(expr, columns, alias_map)
 
         return columns
 
@@ -76,7 +74,7 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
 
 
     # print(f"q1_cols = {q1_cols}")
-    # print(q2_cols)
+    # print(f"q2_cols = {q2_cols}")
 
     if q1_cols != q2_cols: # same column names
         err_message = (

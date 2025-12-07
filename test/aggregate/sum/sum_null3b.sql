@@ -1,0 +1,1 @@
+SELECT SUM(id) FROM Students WHERE id is not null
