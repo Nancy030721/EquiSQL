@@ -47,14 +47,21 @@ EquiSQL is a lightweight SQL query equivalence checker that uses SMT solving to 
 - Aggregate functions currently work with single-row results (no GROUP BY)
 - Limited to aggregate functions on direct column references (not expressions)
 
+## Installation & Dependencies
+EquiSQL requires Python 3.8+ and the following packages:
+- **z3** – Python bindings for the Z3 SMT solver  
+- **cvc5** – Optional; enables alternative SMT solving  
+- **sqlglot** – For SQL parsing  
+- **os**, **sys**, **re**, **time** – Standard Python libraries
+
 ## Example usage
 ### Run from the command line using Z3
 ```bash
-python main.py test/create-table.sql test/query1.sql test/query2.sql
+python main.py test/create-table.sql test/query1.sql test/query2.sql -z3
 ```
 ### Run tests using Z3
 ```bash
-python run_test.py
+python run_test.py -z3
 ```
 ### Run from the command line using CVC5
 ```bash
