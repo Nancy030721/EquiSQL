@@ -32,7 +32,10 @@ GENERAL_TESTS = [
     (["test/create-table.sql", "test/aggregate/count/count_diff1.sql", "test/aggregate/count/count_diff2.sql"], "counterexample"),
     (["test/create-table.sql", "test/aggregate/count/count_join1.sql", "test/aggregate/count/count_join2.sql"], "EQUIVALENT"),
     # Note: count_col_join tests skipped - they compare different columns (sid vs id)
-    # (["test/create-table.sql", "test/aggregate/count/count_col_join1a.sql", "test/aggregate/count/count_col_join1b.sql"], "counterexample"),
+    # python main.py test/create-table.sql test/aggregate/count/count_col_join1a.sql test/aggregate/count/count_col_join1b.sql
+    (["test/create-table.sql", "test/aggregate/count/count_col_join1a.sql", "test/aggregate/count/count_col_join1b.sql"], "counterexample"),
+    (["test/null/create-table3.sql", "test/aggregate/count/count1.sql", "test/aggregate/count/count2.sql"], "EQUIVALENT"),
+    (["test/null/create-table3.sql", "test/aggregate/count/count1.sql", "test/aggregate/count/count3.sql"], "counterexample"),
 
     # tests on Aggregation - SUM
     # Basic equivalence tests

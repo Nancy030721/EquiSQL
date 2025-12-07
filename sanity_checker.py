@@ -44,7 +44,7 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
                         columns.append(col)
 
             elif (expr.key == "count"):
-                normalized = normalize_aggregate(str(expr), alias_map)
+                normalized = normalize_aggregate("count", alias_map)
                 columns.append(normalized)
 
             elif (expr.key == "sum"):
@@ -76,7 +76,7 @@ def sanity_check(schema, q1_ast, q2_ast, q1_alias_map, q2_alias_map):
 
 
     # print(f"q1_cols = {q1_cols}")
-    # print(q2_cols)
+    # print(f"q2_cols = {q2_cols}")
 
     if q1_cols != q2_cols: # same column names
         err_message = (

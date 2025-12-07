@@ -1,2 +1,2 @@
-select count(name) as cnt 
+select count(age) as cnt 
 from Students

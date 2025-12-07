@@ -7,6 +7,7 @@ from cvc5 import Kind
 def encode(sch, q1_ast, q2_ast, map1, map2, c2t, c2t2, nn):
     # step 0: read inputs, define and initialize global variables
     global s, q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, vars, schema, not_nulls, COUNT
+    global q1_agg_output, q2_agg_output, q1_select_out, q2_select_out
     
     s = cvc5.Solver()
     s.setLogic("ALL") 
@@ -14,6 +15,8 @@ def encode(sch, q1_ast, q2_ast, map1, map2, c2t, c2t2, nn):
     s.setOption("produce-unsat-cores", "true")
 
     q1_alias_map, q2_alias_map, q1_col2tables, q2_col2tables, schema, not_nulls = map1, map2, c2t, c2t2, sch, nn
+    q1_agg_output, q2_agg_output = None, None
+    q1_select_out, q2_select_out = [], []
 
     # step 1: declare variables
     vars = declare_variables()
@@ -32,21 +35,54 @@ def encode(sch, q1_ast, q2_ast, map1, map2, c2t, c2t2, nn):
 
 def extract_values(nested):
     variables_to_interpret = set()
-    # todo
     # for block in nested:
     #     for _, term in block.items():
     #         variables_to_interpret.add(term)
     return variables_to_interpret
 
+def encode_diff():
+    global s, q1_where_vars, q2_where_vars
+    global q1_agg_output, q2_agg_output
+    global q1_select_out, q2_select_out
 
-    
-def encode_diff() :
-    global q1_where_vars, q2_where_vars
-    return s.mkTerm(Kind.OR,
-        s.mkTerm(Kind.NOT, s.mkTerm(Kind.EQUAL, q1_where_vars["after_match"], q2_where_vars["after_match"])),
-        s.mkTerm(Kind.NOT, s.mkTerm(Kind.EQUAL, q1_where_vars["after_rnull"], q2_where_vars["after_rnull"])),
-        s.mkTerm(Kind.NOT, s.mkTerm(Kind.EQUAL, q1_where_vars["after_lnull"], q2_where_vars["after_lnull"]))
-    )
+    Or  = lambda *xs: s.mkTerm(Kind.OR, *xs)
+    And = lambda *xs: s.mkTerm(Kind.AND, *xs)
+    Not = lambda x: s.mkTerm(Kind.NOT, x)
+    Eq  = lambda x, y: s.mkTerm(Kind.EQUAL, x, y)
+
+    diffs = [
+        Not(Eq(q1_where_vars["after_match"], q2_where_vars["after_match"])),
+        Not(Eq(q1_where_vars["after_rnull"],  q2_where_vars["after_rnull"])),
+        Not(Eq(q1_where_vars["after_lnull"],  q2_where_vars["after_lnull"])),
+    ]
+
+    if q1_agg_output is not None or q2_agg_output is not None:
+        if q1_agg_output is None or q2_agg_output is None:
+            diffs.append(s.mkTrue())
+            return Or(*diffs)
+
+        if isinstance(q1_agg_output, tuple):
+            num1, den1 = q1_agg_output
+            num2, den2 = q2_agg_output
+
+            diffs.append(Not(Eq(num1, num2)))
+            diffs.append(Not(Eq(den1, den2)))
+            return Or(*diffs)
+
+        diffs.append(Not(Eq(q1_agg_output, q2_agg_output)))
+        return Or(*diffs)
+
+    if q1_select_out and q2_select_out:
+        for (v1, n1), (v2, n2) in zip(q1_select_out, q2_select_out):
+            diffs.append(
+                And(
+                    q1_where_vars["after_match"],
+                    q2_where_vars["after_match"],
+                    Or(Not(Eq(v1, v2)), Not(Eq(n1, n2)))
+                )
+            )
+
+    return Or(*diffs)
 
 
 # declare Z3 variables for all attributes in all tables
@@ -81,6 +117,7 @@ def declare_variables():
 def encode_query(ast, idx):
     join_type = encode_join(ast, idx)
     encode_where(ast, idx, join_type)
+    encode_select(ast, idx)
 
 
 def encode_where(ast, idx, join_type):
@@ -133,7 +170,290 @@ def encode_where(ast, idx, join_type):
             "after_lnull":      q_after_left_null
         }
 
+
+
+def encode_select(ast, idx):
+    """
+    Encodes the SELECT clause, handling COUNT(*) aggregates and regular projections.
+    """
+    global s, q1_select_out, q2_select_out, q1_agg_output, q2_agg_output
+    global q1_where_vars, q2_where_vars, s, vars, schema, q1_alias_map, q2_alias_map
+
+    Or  = lambda *args: s.mkTerm(Kind.OR, *args)
+    And = lambda *args: s.mkTerm(Kind.AND, *args)
+    Not = lambda x: s.mkTerm(Kind.NOT, x)
+    Eq  = lambda x, y: s.mkTerm(Kind.EQUAL, x, y)
+
+    select_exprs = ast.args.get("expressions")
+    outputs = []
+
     
+    # Default SELECT * if no expressions given
+    if select_exprs is None:
+        select_exprs = [exp.Star()]
+
+    for expr in select_exprs:
+        # Aliases: extract actual expression first
+        if isinstance(expr, exp.Alias):
+            expr = expr.this
+
+        # --- COUNT(*) AGGREGATE ---
+        if is_count_star(expr):
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
+            count_val = s.mkConst(s.getIntegerSort(), f"q{idx}_count_star_result")
+
+            # count = 1 if row exists, else 0
+            s.assertFormula(s.mkTerm(Kind.EQUAL, 
+                                     count_val, 
+                                     s.mkTerm(Kind.ITE, row_exists, s.mkInteger(1), s.mkInteger(0))))
+
+            if idx == 1:
+                q1_agg_output = count_val
+            else:
+                q2_agg_output = count_val
+
+            continue
+        # --- END COUNT(*) ---
+
+        # --- COUNT(col) ---
+        if is_count_col(expr):
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
+
+            # Extract the column expression
+            col_expr = extract_aggregate_column(expr)
+
+            # Use encode_expr to get the joined (post-WHERE) value + null flag
+            _, _, nulls = encode_expr(idx, col_expr, where=True)
+            nulls.append(s.mkFalse())
+            nulls.append(s.mkFalse())
+            col_is_null = Or(*nulls) 
+
+            count_val = s.mkConst(s.getIntegerSort(), f"q{idx}_count_col_result")
+
+            # COUNT(col) counts only NOT NULL values
+            s.assertFormula(s.mkTerm(Kind.EQUAL, 
+                                     count_val, 
+                                     s.mkTerm(Kind.ITE, And(row_exists, Not(col_is_null)), s.mkInteger(1), s.mkInteger(0))))
+
+            if idx == 1:
+                q1_agg_output = count_val
+            else:
+                q2_agg_output = count_val
+
+            continue
+        # --- END COUNT(col) ---
+        
+
+        # --- SUM(col) ---
+        if is_sum_col(expr):
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
+
+            # Get the column expression
+            col_expr = extract_aggregate_column(expr)
+            print(f"line 257, aggregate column is {col_expr}") # expect to see id
+
+            # Use encode_expr to get column value + null flag
+            col_val, col_type, nulls = encode_expr(idx, col_expr, where=True)
+            nulls.append(s.mkFalse())
+            nulls.append(s.mkFalse())
+            col_is_null = Or(*nulls) 
+
+            # SUM(col) = col_val IF row exists AND col is non-null, else 0
+            # In cvc5, both THEN ELSE branch must have the same type, so it fails when there's SUM(some_real_attribute_like_GPA)
+            if col_type == "STRING": 
+                exit(f"The SUM() aggregate function in SQL is designed to work with numeric data types, but get STRING")
+            elif col_type == "INT":
+                null_value = s.mkInteger(0)
+                sum_val = s.mkConst(s.getIntegerSort(), f"q{idx}_sum_col_result")
+            else:
+                null_value = s.mkReal(0)
+                sum_val = s.mkConst(s.getRealSort(), f"q{idx}_sum_col_result")
+
+            s.assertFormula(s.mkTerm(Kind.EQUAL, 
+                                     sum_val, 
+                                     s.mkTerm(Kind.ITE, And(row_exists, Not(col_is_null)), col_val, null_value)))
+
+            # store as the aggregate output (same mechanism as COUNT)
+            if idx == 1:
+                q1_agg_output = sum_val
+            else:
+                q2_agg_output = sum_val
+
+            continue
+        # --- END SUM(col) ---
+
+        # --- AVG(col) ---
+        if is_avg_col(expr):
+            where_vars = get_where_vars(idx)
+            row_exists = get_row_existence_condition(idx, where_vars)
+
+            # Extract the column expression
+            col_expr = extract_aggregate_column(expr)
+
+            # Encode the column value, type, and nulls
+            col_val, col_type, nulls = encode_expr(idx, col_expr, where=True)
+            col_is_null = Or(*nulls) if nulls else s.mkFalse()
+
+            # Create numerator and denominator variables
+            avg_den = s.mkConst(s.getIntegerSort(), f"q{idx}_avg_den")
+
+            # AVG semantics:
+            # numerator = SUM(col) over non-null values
+            # denominator = COUNT(col) over non-null values
+            # same here, don't hardcode type
+            if col_type == "STRING": 
+                exit(f"The AVG() aggregate function in SQL is designed to work with numeric data types, but get STRING")
+            elif col_type == "INT":
+                avg_num = s.mkConst(s.getIntegerSort(), f"q{idx}_avg_num")
+                null_value = s.mkInteger(0)
+            else:
+                avg_num = s.mkConst(s.getRealSort(), f"q{idx}_avg_num")
+                null_value = s.mkReal(0)
+
+            s.assertFormula(s.mkTerm(Kind.EQUAL, 
+                                     avg_num, 
+                                     s.mkTerm(Kind.ITE, And(row_exists, Not(col_is_null)), col_val, null_value)))
+            s.assertFormula(s.mkTerm(Kind.EQUAL, 
+                                     avg_den, 
+                                     s.mkTerm(Kind.ITE, And(row_exists, Not(col_is_null)), s.mkInteger(1), s.mkInteger(0))))
+
+
+            # Store as aggregate output as a tuple-like structure
+            if idx == 1:
+                q1_agg_output = (avg_num, avg_den)
+            else:
+                q2_agg_output = (avg_num, avg_den)
+
+            continue
+        # --- END AVG(col) ---
+
+        # Handle STAR (expand all columns)
+        if isinstance(expr, exp.Star):
+            if idx == 1:
+                alias_map = q1_alias_map
+            else: 
+                alias_map = q2_alias_map
+            for aliased_table_name, real_table_name in alias_map.items():
+                for col in schema[real_table_name]:
+                    v = vars[f"J{idx}_{real_table_name}_{col}"]
+                    n = vars[f"J{idx}_{real_table_name}_{col}_is_null"]
+                    outputs.append((v, n))
+            continue
+
+        # Regular expression output
+        val, _, nulls = encode_expr(idx, expr, where=True)
+        if not nulls: 
+            return s.mkFalse()
+        elif len(nulls) == 1: 
+            null_flag = nulls[0]
+        else:
+            null_flag = Or(*nulls)
+        outputs.append((val, null_flag))
+
+    # Assign outputs to global structure
+    if idx == 1:
+        q1_select_out = outputs
+    else:
+        q2_select_out = outputs
+
+
+
+def is_count_star(expr):
+    """
+    Matches COUNT(*) pattern in sqlglot AST:
+      exp.Count(this=exp.Star())
+    """
+    if isinstance(expr, exp.Count):
+        return isinstance(expr.this, exp.Star)
+    # Also handle Anonymous case for backwards compatibility
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "count":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Star)
+    return False
+
+
+def is_count_col(expr):
+    """
+    Detects COUNT(col) where col is a column reference.
+    Does NOT match COUNT(*) or COUNT(<expr>) for now.
+    """
+    # Pattern: Count(this=Column)
+    if isinstance(expr, exp.Count):
+        return isinstance(expr.this, exp.Column)
+    # Pattern: Anonymous function: count(col)
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "count":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Column)
+    return False
+
+
+def is_sum_col(expr):
+    """
+    Detects SUM(col) where col is a direct column reference.
+    Does NOT handle SUM(*) or SUM(expr) yet.
+    """
+    if isinstance(expr, exp.Sum):
+        return isinstance(expr.this, exp.Column)
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "sum":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Column)
+    return False
+
+
+def extract_aggregate_column(expr):
+    """
+    Extracts the column expression from aggregate functions like COUNT(col), SUM(col), AVG(col).
+    Works with both native sqlglot expressions and Anonymous function calls.
+    """
+    if isinstance(expr, (exp.Count, exp.Sum, exp.Avg)):
+        return expr.this
+    if isinstance(expr, exp.Anonymous):
+        args = expr.expressions or []
+        if len(args) == 1:
+            return args[0]
+    return None
+
+
+def get_row_existence_condition(idx, where_vars):
+    """
+    Returns a Z3 expression representing whether a row exists after WHERE clause.
+    A row exists if it's in any of: after_match, after_rnull, or after_lnull.
+    """
+    return s.mkTerm(Kind.OR, 
+        where_vars["after_match"],
+        where_vars["after_rnull"],
+        where_vars["after_lnull"]
+    )
+
+def get_where_vars(idx):
+    """
+    Returns the appropriate where_vars dictionary for the given query index.
+    """
+    global q1_where_vars, q2_where_vars
+    return q1_where_vars if idx == 1 else q2_where_vars
+
+
+def is_avg_col(expr):
+    """
+    Detects AVG(col) where col is a direct column reference.
+    Does NOT handle AVG(*) or AVG(expr) yet.
+    """
+    if isinstance(expr, exp.Avg):
+        return isinstance(expr.this, exp.Column)
+    if isinstance(expr, exp.Anonymous):
+        if expr.this.lower() == "avg":
+            args = expr.expressions or []
+            return len(args) == 1 and isinstance(args[0], exp.Column)
+    return False
+
+
+
 def encode_condition(expr, idx, where=False):
     key = expr.key.lower()
 
@@ -235,7 +555,6 @@ def encode_expr(idx, expr, where=False):
             else:
                 raise ValueErrs.mkTerm(Kind.OR,  f"Unsupported math operation {key}")
    
-
     if isinstance(expr, exp.Column):
         table = get_table(idx, expr)
         column = str(expr.this)
